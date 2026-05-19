@@ -11,11 +11,12 @@ let ready = false;
 function now() { return new Date().toISOString(); }
 
 function getSql() {
-  if (!process.env.DATABASE_URL) {
+  const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  if (!dbUrl) {
     throw new Error('DATABASE_URL is missing. Add a Postgres connection string in .env.local or Vercel Environment Variables.');
   }
   if (!sqlConnection) {
-    sqlConnection = postgres(process.env.DATABASE_URL, { max: 1, prepare: false });
+    sqlConnection = postgres(dbUrl, { max: 1, prepare: false });
   }
   return sqlConnection;
 }
