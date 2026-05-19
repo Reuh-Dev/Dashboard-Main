@@ -205,7 +205,7 @@ aside.card .cardHead { background: #eef2ff; border-bottom-color: #c7d2fe; }
 
 .editableBox h3 { color: var(--accent); font-size: 14px; font-weight: 700; text-transform: none; letter-spacing: 0; margin-bottom: 10px; }
 .editableBox textarea:focus, .editableBox input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,.08); }
-.editableBox.fieldError { --accent: #ef4444; animation: shake 0.3s ease; }
+.editableBox.fieldError { --accent: #ef4444; background: #fff5f5; animation: shake 0.3s ease; }
 .fieldErrorMsg { color: #ef4444; font-size: 0.78rem; font-weight: 600; margin: 0; }
 @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
 .autoText { direction: auto; text-align: start; white-space: pre-wrap; }

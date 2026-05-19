@@ -295,6 +295,7 @@ aside.card .cardHead { background: #eef2ff; border-bottom-color: #c7d2fe; }
 
 .editableBox.fieldError {
   --accent: #ef4444;
+  background: #fff5f5;
   animation: shake 0.3s ease;
 }
 .fieldErrorMsg {
