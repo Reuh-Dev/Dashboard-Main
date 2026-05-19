@@ -1,0 +1,22 @@
+{
+  "name": "tou-qa-dashboard-vercel-postgres",
+  "version": "1.5.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "dependencies": {
+    "next": "latest",
+    "postgres": "^3.4.7",
+    "react": "latest",
+    "react-dom": "latest",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {}
+}

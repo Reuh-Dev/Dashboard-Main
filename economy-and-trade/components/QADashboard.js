@@ -1,0 +1,587 @@
+'use client';
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+const EDITABLE_FIELDS = [
+  'service_name',
+  'directorate',
+  'sub_directorate',
+  'required_documents',
+  'fees',
+  'notes',
+];
+
+const FIELD_META = {
+  service_name:       { ar: { label: 'اسم الخدمة',          placeholder: 'أدخل اسم الخدمة…'          }, en: { label: 'Service Name',      placeholder: 'Enter service name…'      } },
+  directorate:        { ar: { label: 'المديرية',             placeholder: 'أدخل المديرية…'             }, en: { label: 'Directorate',        placeholder: 'Enter directorate…'        } },
+  sub_directorate:    { ar: { label: 'المديرية الفرعية',     placeholder: 'أدخل المديرية الفرعية…'     }, en: { label: 'Sub-Directorate',    placeholder: 'Enter sub-directorate…'    } },
+  required_documents: { ar: { label: 'المستندات المطلوبة',   placeholder: 'أدخل المستندات المطلوبة…'   }, en: { label: 'Required Documents', placeholder: 'Enter required documents…' } },
+  fees:               { ar: { label: 'الرسوم',               placeholder: 'أدخل الرسوم…'               }, en: { label: 'Fees',               placeholder: 'Enter fees…'               } },
+  notes:              { ar: { label: 'ملاحظات',              placeholder: 'أدخل الملاحظات…'            }, en: { label: 'Notes',              placeholder: 'Enter notes…'              } },
+};
+
+const COMPACT_FIELDS = new Set(['service_name', 'directorate', 'sub_directorate', 'fees']);
+
+const COPY = {
+  ar: {
+    switchToArabic: 'AR',
+    switchToEnglish: 'EN',
+    title: 'لوحة تدقيق مستندات وزارة الاقتصاد والتجارة',
+    exportCorrectedJSON: 'تصدير JSON المصحّح',
+    pending: 'قيد المراجعة',
+    searchPlaceholder: 'ابحث في الخدمات…',
+    allRecords: 'كل السجلات',
+    saved: 'محفوظ',
+    editedFilter: 'معدّل',
+    flagged: 'تنبيهات',
+    records: 'السجلات',
+    shown: 'ظاهر',
+    noMatchingRecords: 'لا توجد سجلات مطابقة.',
+    selectRecord: 'اختر سجلاً',
+    recordOf: (current, total) => `السجل ${current} من ${total}`,
+    textFlags: 'تنبيهات نصية',
+    flag: 'تنبيه',
+    edited: 'معدّل',
+    originalValue: 'القيمة الأصلية',
+    save: 'حفظ',
+    resetRecordEdits: 'إلغاء تعديلات السجل',
+    emptySelect: 'اختر سجلاً للبدء بالتدقيق.',
+    allDirectorates: 'كل المديريات',
+    allSubDirectorates: 'كل المديريات الفرعية',
+    status: { validated: 'محفوظ', no: 'لا', pending: 'قيد المراجعة' }
+  },
+  en: {
+    switchToArabic: 'AR',
+    switchToEnglish: 'EN',
+    title: 'Economy & Trade Services QA Dashboard',
+    exportCorrectedJSON: 'Export corrected JSON',
+    pending: 'Pending',
+    searchPlaceholder: 'Search services…',
+    allRecords: 'All records',
+    saved: 'Saved',
+    editedFilter: 'Edited',
+    flagged: 'Flags',
+    records: 'Records',
+    shown: 'shown',
+    noMatchingRecords: 'No records match this view.',
+    selectRecord: 'Select a record',
+    recordOf: (current, total) => `Record ${current} of ${total}`,
+    textFlags: 'Text flags',
+    flag: 'flag',
+    edited: 'Edited',
+    originalValue: 'Original value',
+    save: 'Save',
+    resetRecordEdits: 'Reset record edits',
+    emptySelect: 'Select a record to begin QA.',
+    allDirectorates: 'All directorates',
+    allSubDirectorates: 'All sub-directorates',
+    status: { validated: 'Saved', no: 'No', pending: 'Pending' }
+  }
+};
+
+function normalize(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .replace(/[ـ]/g, '')
+    .replace(/[إأآا]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => line.replace(/^[-–—•\d.\s]+/, '').trim())
+    .filter(Boolean)
+    .join('\n')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+}
+
+function recordKey(index) { return `record-${index}`; }
+function statusText(status, labels) {
+  if (status === 'validated') return labels.status.validated;
+  if (status === 'no') return labels.status.no;
+  return labels.status.pending;
+}
+function statusClass(status) {
+  if (status === 'validated') return 'ok';
+  if (status === 'no') return 'no';
+  return 'pending';
+}
+
+function getFlags(record) {
+  const text = `${record?.service_name || ''}\n${record?.required_documents || ''}\n${record?.notes || ''}`;
+  const rules = [
+    ['Link', 'يحتوي على نص مؤقت: Link'],
+    ['نوذج', 'احتمال خطأ مطبعي: نوذج'],
+    ['وزراة', 'احتمال خطأ مطبعي: وزراة'],
+  ];
+  return rules.filter(([needle]) => text.includes(needle)).map(([, label]) => label);
+}
+
+function downloadBlob(content, filename, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function cleanSourceRecord(record) {
+  const result = { service_code: String(record?.service_code || '') };
+  EDITABLE_FIELDS.forEach((f) => { result[f] = String(record?.[f] || ''); });
+  return result;
+}
+
+function cleanDbRecord(record, fallbackIndex = 0) {
+  const index = Number.isInteger(record?.record_index) ? record.record_index : fallbackIndex;
+  const result = {
+    id: Number(record?.id || index + 1),
+    record_index: index,
+    source_service_code: String(record?.source_service_code ?? record?.service_code ?? ''),
+    service_code: String(record?.service_code || ''),
+    updated_at: record?.updated_at || null,
+  };
+  EDITABLE_FIELDS.forEach((f) => {
+    result[`source_${f}`] = String(record?.[`source_${f}`] ?? record?.[f] ?? '');
+    result[f] = String(record?.[f] || '');
+  });
+  return result;
+}
+
+function initialDbRecords(records) {
+  return (Array.isArray(records) ? records : []).map((record, index) => {
+    const source = cleanSourceRecord(record);
+    const sourceFields = {};
+    EDITABLE_FIELDS.forEach((f) => { sourceFields[`source_${f}`] = source[f]; });
+    return cleanDbRecord({ id: index + 1, record_index: index, source_service_code: source.service_code, ...sourceFields, ...source }, index);
+  });
+}
+
+export default function QADashboard({ records }) {
+  const initialRecords = useMemo(() => initialDbRecords(records), [records]);
+
+  const [selected, setSelected] = useState(0);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [directorateFilter, setDirectorateFilter] = useState('all');
+  const [subDirectorateFilter, setSubDirectorateFilter] = useState('all');
+  const [dbRecords, setDbRecords] = useState(initialRecords);
+  const [qa, setQa] = useState({});
+  const [, setDatabaseStatus] = useState('جارٍ تحميل قاعدة البيانات…');
+  const [toast, setToast] = useState('');
+  const [uiLanguage, setUiLanguage] = useState('ar');
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [loginError, setLoginError] = useState('');
+  const saveTimers = useRef({});
+
+  const isArabic = uiLanguage === 'ar';
+  const t = COPY[uiLanguage];
+
+  const currentRecords = useMemo(() => [...dbRecords].sort((a, b) => a.record_index - b.record_index), [dbRecords]);
+
+  const sourceRecords = useMemo(() => currentRecords.map((r) => {
+    const result = { service_code: r.source_service_code };
+    EDITABLE_FIELDS.forEach((f) => { result[f] = r[`source_${f}`] || ''; });
+    return result;
+  }), [currentRecords]);
+
+  function applyDatabaseState(payload) {
+    if (Array.isArray(payload?.records)) setDbRecords(payload.records.map(cleanDbRecord));
+    if (payload?.qa && typeof payload.qa === 'object' && !Array.isArray(payload.qa)) setQa(payload.qa);
+  }
+
+  async function postDatabaseAction(body, options = {}) {
+    const { applyState = false } = options;
+    setDatabaseStatus('جارٍ الحفظ في قاعدة البيانات…');
+    const response = await fetch('/api/database', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const payload = await response.json();
+    if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'فشل حفظ قاعدة البيانات.');
+    if (applyState) applyDatabaseState(payload);
+    setDatabaseStatus('تم الحفظ');
+    return payload;
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDatabase() {
+      try {
+        const response = await fetch('/api/database', { cache: 'no-store' });
+        const payload = await response.json();
+        if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'فشل تحميل قاعدة البيانات.');
+        if (cancelled) return;
+        applyDatabaseState(payload);
+        setDatabaseStatus('قاعدة البيانات جاهزة');
+      } catch (error) {
+        if (!cancelled) setDatabaseStatus(`قاعدة البيانات غير متاحة: ${error.message}`);
+      }
+    }
+    loadDatabase();
+    return () => {
+      cancelled = true;
+      Object.values(saveTimers.current).forEach((t) => window.clearTimeout(t));
+    };
+  }, []);
+
+  useEffect(() => {
+    const sequence = 'OMSAR';
+    let index = 0;
+    function onKeyDown(e) {
+      if (!e.ctrlKey) { index = 0; return; }
+      if (e.key === 'Control') return;
+      if (e.key.toUpperCase() === sequence[index]) {
+        e.preventDefault(); index++;
+        if (index === sequence.length) { index = 0; setShowLogin(true); }
+      } else { index = e.key.toUpperCase() === sequence[0] ? 1 : 0; }
+    }
+    function onKeyUp(e) { if (e.key === 'Control') index = 0; }
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); };
+  }, []);
+
+  function handleAdminLogin(e) {
+    e.preventDefault();
+    if (loginForm.username === 'admin' && loginForm.password === 'OMSAR@2025') {
+      setShowLogin(false); setShowAdmin(true);
+      setLoginForm({ username: '', password: '' }); setLoginError('');
+    } else { setLoginError('Invalid credentials.'); }
+  }
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = window.setTimeout(() => setToast(''), 1600);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  function getRecord(index) { return currentRecords[index] || null; }
+  function getSourceRecord(index) {
+    return sourceRecords[index] || Object.fromEntries([['service_code', ''], ...EDITABLE_FIELDS.map((f) => [f, ''])]);
+  }
+  function getQA(index) { return qa[recordKey(index)] || {}; }
+
+  function fieldHasDataEdit(index, field) {
+    const record = getRecord(index);
+    const source = getSourceRecord(index);
+    if (!record || !source) return false;
+    return String(record[field] || '') !== String(source[field] || '');
+  }
+  function recordHasDataEdit(index) { return EDITABLE_FIELDS.some((f) => fieldHasDataEdit(index, f)); }
+
+  function updateLocalRecord(index, patch) {
+    setDbRecords((current) => current.map((r) =>
+      r.record_index !== index ? r : { ...r, ...patch, updated_at: new Date().toISOString() }
+    ));
+  }
+
+  function queueRecordSave(index, field, value) {
+    const key = `${index}-${field}`;
+    if (saveTimers.current[key]) window.clearTimeout(saveTimers.current[key]);
+    setDatabaseStatus('جارٍ الحفظ في قاعدة البيانات…');
+    saveTimers.current[key] = window.setTimeout(async () => {
+      try {
+        await postDatabaseAction({ action: 'update_record', record_index: index, patch: { [field]: value } });
+      } catch (error) { setDatabaseStatus(`فشل الحفظ: ${error.message}`); }
+    }, 450);
+  }
+
+  function updateDataCell(index, field, value) {
+    if (!EDITABLE_FIELDS.includes(field)) return;
+    updateLocalRecord(index, { [field]: value });
+    queueRecordSave(index, field, value);
+  }
+
+  async function markValidated(index) {
+    setQa((current) => ({
+      ...current,
+      [recordKey(index)]: { ...(current[recordKey(index)] || {}), status: 'validated', corrected_required_documents: '', qa_note: '', updated_at: new Date().toISOString() }
+    }));
+    try {
+      await postDatabaseAction({ action: 'save_qa', record_index: index, status: 'validated', corrected_required_documents: '', qa_note: '' });
+      setToast('تم الحفظ');
+    } catch (error) { setDatabaseStatus(`فشل الحفظ: ${error.message}`); }
+  }
+
+  function exportCorrectedJSON() {
+    const cleanRecords = currentRecords.map((r) => {
+      const result = { service_code: r.service_code };
+      EDITABLE_FIELDS.forEach((f) => { result[f] = r[f]; });
+      return result;
+    });
+    downloadBlob(JSON.stringify(cleanRecords, null, 2), 'etr_services_corrected.json', 'application/json;charset=utf-8');
+  }
+
+  async function resetRecordEdits(index) {
+    const source = getSourceRecord(index);
+    const patch = {};
+    EDITABLE_FIELDS.forEach((f) => { patch[f] = source[f]; });
+    updateLocalRecord(index, patch);
+    try {
+      await postDatabaseAction({ action: 'reset_record_edits', record_index: index }, { applyState: true });
+      setToast('تمت استعادة القيم الأصلية');
+    } catch (error) { setDatabaseStatus(`فشل الحفظ: ${error.message}`); }
+  }
+
+  const stats = useMemo(() => {
+    let validated = 0; let pending = 0; let edited = 0;
+    currentRecords.forEach((_, index) => {
+      const status = getQA(index).status || 'pending';
+      if (status === 'validated') validated += 1; else pending += 1;
+      if (recordHasDataEdit(index)) edited += 1;
+    });
+    return { validated, pending, edited };
+  }, [qa, currentRecords]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const directorates = useMemo(() =>
+    [...new Set(currentRecords.map((r) => r.directorate).filter(Boolean))].sort(),
+    [currentRecords]
+  );
+  const subDirectorates = useMemo(() => {
+    const pool = directorateFilter === 'all' ? currentRecords : currentRecords.filter((r) => r.directorate === directorateFilter);
+    return [...new Set(pool.map((r) => r.sub_directorate).filter(Boolean))].sort();
+  }, [currentRecords, directorateFilter]);
+
+  const shown = useMemo(() => {
+    const query = normalize(search).toLowerCase();
+    return currentRecords.map((_, i) => i).filter((index) => {
+      const record = getRecord(index);
+      const status = getQA(index).status || 'pending';
+      const haystack = EDITABLE_FIELDS.map((f) => record[f] || '').join('\n');
+      const matchesSearch = !query || normalize(haystack).toLowerCase().includes(query);
+      const matchesFilter = filter === 'all'
+        || (filter === 'flagged' ? getFlags(record).length > 0 : filter === 'edited' ? recordHasDataEdit(index) : status === filter);
+      const matchesDir = directorateFilter === 'all' || record.directorate === directorateFilter;
+      const matchesSub = subDirectorateFilter === 'all' || record.sub_directorate === subDirectorateFilter;
+      return matchesSearch && matchesFilter && matchesDir && matchesSub;
+    });
+  }, [currentRecords, search, filter, directorateFilter, subDirectorateFilter, qa]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (shown.length && !shown.includes(selected)) setSelected(shown[0]);
+  }, [shown, selected]);
+
+  const selectedRecord = getRecord(selected);
+  const selectedSourceRecord = getSourceRecord(selected);
+  const selectedState = selectedRecord ? getQA(selected) : {};
+  const selectedStatus = selectedState.status || 'pending';
+  const selectedFlags = selectedRecord ? getFlags(selectedRecord) : [];
+  const selectedEdited = selectedRecord ? recordHasDataEdit(selected) : false;
+  const pct = currentRecords.length ? Math.round((stats.validated / currentRecords.length) * 100) : 0;
+
+  return (
+    <main className={`wrap ${isArabic ? 'rtl' : 'ltr'}`} dir={isArabic ? 'rtl' : 'ltr'} lang={isArabic ? 'ar' : 'en'}>
+      <header className="header">
+        <h1 className="ar">{t.title}</h1>
+        <div className="row headerActions">
+          <div className="languageToggle" aria-label="Language toggle">
+            <button type="button" className={`toggleBtn ${isArabic ? 'active' : ''}`} onClick={() => setUiLanguage('ar')}>{t.switchToArabic}</button>
+            <button type="button" className={`toggleBtn ${!isArabic ? 'active' : ''}`} onClick={() => setUiLanguage('en')}>{t.switchToEnglish}</button>
+          </div>
+        </div>
+      </header>
+
+      <section className="stats" aria-label="QA progress">
+        <div className="progressCard">
+          <div className="progressHeader"><span className="progressPct">{pct}%</span></div>
+          <div className="progressTrack"><div className="progressFill" style={{ width: `${pct}%` }} /></div>
+          <div className="row progressPills">
+            <span className="pill ok">{t.saved}: {stats.validated}</span>
+            <span className="pill">{t.pending}: {stats.pending}</span>
+            {stats.edited ? <span className="pill edited">{t.editedFilter}: {stats.edited}</span> : null}
+          </div>
+        </div>
+      </section>
+
+      <div className="toolbar">
+        <div className="searchWrap">
+          <svg className="searchIcon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.5"/>
+            <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          <input className="toolbarSearch" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t.searchPlaceholder} />
+        </div>
+        <CustomSelect value={filter} onChange={setFilter} options={[
+          { value: 'all', label: t.allRecords },
+          { value: 'pending', label: t.pending },
+          { value: 'validated', label: t.saved },
+          { value: 'edited', label: t.editedFilter },
+          { value: 'flagged', label: t.flagged }
+        ]} rtl={isArabic} />
+        <CustomSelect value={directorateFilter} onChange={(v) => { setDirectorateFilter(v); setSubDirectorateFilter('all'); }}
+          options={[{ value: 'all', label: t.allDirectorates }, ...directorates.map((d) => ({ value: d, label: d }))]} rtl={isArabic} />
+        <CustomSelect value={subDirectorateFilter} onChange={setSubDirectorateFilter}
+          options={[{ value: 'all', label: t.allSubDirectorates }, ...subDirectorates.map((s) => ({ value: s, label: s }))]} rtl={isArabic} />
+      </div>
+
+      <section className="layout">
+        <aside className="card">
+          <div className="cardHead">
+            <h2>{t.records}</h2>
+            <span className="pill">{shown.length} {t.shown}</span>
+          </div>
+          <div className="list">
+            {shown.length ? shown.map((index) => {
+              const record = getRecord(index);
+              const status = getQA(index).status || 'pending';
+              const flags = getFlags(record).length;
+              const edited = recordHasDataEdit(index);
+              return (
+                <button key={index} className={`item ${index === selected ? 'active' : ''}`} onClick={() => setSelected(index)}>
+                  <span className={isArabic ? 'ar name' : 'autoText name'} dir={isArabic ? 'rtl' : 'auto'}>{record.service_name}</span>
+                  <span className="row" style={{ justifyContent: 'flex-end' }}>
+                    <span className={`pill ${statusClass(status)}`}>{statusText(status, t)}</span>
+                    {edited ? <span className="pill edited">{t.edited}</span> : null}
+                    {flags ? <span className="pill flag">{flags} {t.flag}</span> : null}
+                  </span>
+                </button>
+              );
+            }) : <div className="empty">{t.noMatchingRecords}</div>}
+          </div>
+        </aside>
+
+        <section className="card">
+          <div className="cardHead">
+            <div>
+              <h2 className={selectedRecord ? (isArabic ? 'ar' : 'autoText') : ''} dir={selectedRecord ? (isArabic ? 'rtl' : 'auto') : undefined}>
+                {selectedRecord ? selectedRecord.service_name : t.selectRecord}
+              </h2>
+              <div className="muted">{selectedRecord ? t.recordOf(selected + 1, currentRecords.length) : ''}</div>
+            </div>
+            <span className={`pill ${statusClass(selectedStatus)}`}>{statusText(selectedStatus, t)}</span>
+          </div>
+          <div className="cardBody">
+            {selectedRecord ? (
+              <>
+                {selectedFlags.length ? (
+                  <>
+                    <div className="sep" />
+                    <div className="box">
+                      <h3>{t.textFlags}</h3>
+                      <div className="row">{selectedFlags.map((flag) => <span key={flag} className="pill flag">{flag}</span>)}</div>
+                    </div>
+                  </>
+                ) : null}
+                <div className="sep" />
+                {EDITABLE_FIELDS.map((field) => (
+                  <EditableTextArea
+                    key={field}
+                    title={FIELD_META[field]?.[uiLanguage]?.label || field}
+                    field={field}
+                    selected={selected}
+                    selectedRecord={selectedRecord}
+                    selectedSourceRecord={selectedSourceRecord}
+                    fieldHasDataEdit={fieldHasDataEdit}
+                    updateDataCell={updateDataCell}
+                    labels={t}
+                    compact={COMPACT_FIELDS.has(field)}
+                    rtl={isArabic}
+                    placeholder={FIELD_META[field]?.[uiLanguage]?.placeholder || ''}
+                  />
+                ))}
+                <div className="sep" />
+                <div className="row">
+                  <button className="btn ok" onClick={() => markValidated(selected)}>{t.save}</button>
+                  {selectedEdited ? <button className="btn ghost" onClick={() => resetRecordEdits(selected)}>{t.resetRecordEdits}</button> : null}
+                </div>
+              </>
+            ) : <div className="empty">{t.emptySelect}</div>}
+          </div>
+        </section>
+      </section>
+
+      {showLogin && (
+        <div className="loginOverlay" onClick={() => { setShowLogin(false); setLoginError(''); setLoginForm({ username: '', password: '' }); }}>
+          <div className="loginPanel" onClick={(e) => e.stopPropagation()}>
+            <div className="loginHead"><span>🔒 Admin Access</span></div>
+            <form className="loginBody" onSubmit={handleAdminLogin}>
+              <input type="text" placeholder="Username" autoComplete="off" autoFocus value={loginForm.username} onChange={(e) => setLoginForm((f) => ({ ...f, username: e.target.value }))} />
+              <input type="password" placeholder="Password" value={loginForm.password} onChange={(e) => setLoginForm((f) => ({ ...f, password: e.target.value }))} />
+              {loginError && <p className="loginError">{loginError}</p>}
+              <button type="submit" className="btn primary" style={{ width: '100%' }}>Enter</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showAdmin && (
+        <div className="adminOverlay" onClick={() => setShowAdmin(false)}>
+          <div className="adminPanel" onClick={(e) => e.stopPropagation()}>
+            <div className="adminHead">
+              <span>Admin</span>
+              <button className="adminClose" onClick={() => setShowAdmin(false)}>✕</button>
+            </div>
+            <div className="adminBody">
+              <button className="btn primary" style={{ width: '100%' }} onClick={() => { exportCorrectedJSON(); setShowAdmin(false); }}>
+                {isArabic ? 'تصدير JSON المصحّح' : 'Export corrected JSON'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className={`toast ${toast ? 'show' : ''}`}>{toast}</div>
+    </main>
+  );
+}
+
+function CustomSelect({ value, onChange, options, rtl = false }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    function onDown(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, []);
+  const selected = options.find((o) => o.value === value);
+  return (
+    <div className={`customSelect${open ? ' open' : ''}`} ref={ref} dir={rtl ? 'rtl' : 'ltr'}>
+      <button type="button" className="customSelectBtn" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <span className={rtl ? 'ar' : ''}>{selected?.label}</span>
+        <svg className={`chevron${open ? ' up' : ''}`} width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+          <path fill="currentColor" d="M5 7L0 2h10z" />
+        </svg>
+      </button>
+      <div className="customSelectDropdown" aria-hidden={!open}>
+        {options.map((opt) => (
+          <button key={opt.value} type="button" className={`customSelectOption${value === opt.value ? ' active' : ''}`}
+            onClick={() => { onChange(opt.value); setOpen(false); }}>
+            <span className={rtl ? 'ar' : ''}>{opt.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EditableTextArea({ title, field, selected, selectedRecord, selectedSourceRecord, fieldHasDataEdit, updateDataCell, compact = false, rtl = false, placeholder = '', labels }) {
+  const edited = fieldHasDataEdit(selected, field);
+  return (
+    <>
+      <div className={`box editableBox field-${field}`}>
+        <div className="labelRow">
+          <h3>{title}</h3>
+          {edited ? <span className="pill edited">{labels.edited}</span> : null}
+        </div>
+        <textarea
+          className={`cellInput ${compact ? 'compact' : ''} ${rtl ? 'ar' : 'autoText'}`}
+          dir={rtl ? 'rtl' : 'auto'}
+          value={selectedRecord[field] || ''}
+          onChange={(e) => updateDataCell(selected, field, e.target.value)}
+          placeholder={placeholder}
+        />
+        {edited ? (
+          <details className="original">
+            <summary>{labels.originalValue}</summary>
+            <div className={rtl ? 'source ar' : 'source autoText'}>{selectedSourceRecord[field] || ''}</div>
+          </details>
+        ) : null}
+      </div>
+      <div style={{ height: 12 }} />
+    </>
+  );
+}
