@@ -60,11 +60,48 @@ input, select, textarea {
 textarea { min-height: 200px; resize: vertical; line-height: 1.8; color: #374151; }
 input:focus, select:focus, textarea:focus { border-color: #aaa; box-shadow: 0 0 0 3px rgba(0,0,0,.05); }
 .stats { margin: 16px 0; }
-.progressCard { background: #eff6ff; border: 1px solid #bfdbfe; border-left: 5px solid #2563eb; border-radius: var(--radius); padding: 16px 20px; }
-.progressHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.progressPct { font-weight: 800; font-size: 18px; color: #1d4ed8; }
-.progressTrack { height: 10px; background: #bfdbfe; border-radius: 999px; overflow: hidden; margin-bottom: 12px; }
-.progressFill { height: 100%; background: #2563eb; border-radius: 999px; min-width: 0; transition: width .5s ease; }
+.progressCard {
+  background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 60%, #2563eb 100%);
+  border: none;
+  border-radius: var(--radius);
+  padding: 24px 28px 20px;
+  position: relative;
+  overflow: hidden;
+}
+.progressCard::before {
+  content: '';
+  position: absolute;
+  top: -50px; right: -50px;
+  width: 200px; height: 200px;
+  background: rgba(255,255,255,.06);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.progressCard::after {
+  content: '';
+  position: absolute;
+  bottom: -70px; left: 15%;
+  width: 260px; height: 260px;
+  background: rgba(255,255,255,.04);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.progressMain { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 20px; position: relative; z-index: 1; }
+.progressLeft { display: flex; align-items: baseline; gap: 10px; }
+.progressPct { font-size: 64px; font-weight: 900; color: #fff; line-height: 1; letter-spacing: -0.04em; }
+.progressPctSymbol { font-size: 32px; font-weight: 700; color: rgba(255,255,255,.7); }
+.progressLabel { font-size: 14px; font-weight: 600; color: rgba(255,255,255,.6); text-transform: uppercase; letter-spacing: .1em; align-self: center; }
+.progressRight { display: flex; gap: 12px; }
+.statChip { display: flex; flex-direction: column; align-items: center; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2); border-radius: 14px; padding: 10px 20px; min-width: 90px; backdrop-filter: blur(4px); }
+.statChip.ok { background: rgba(74,222,128,.18); border-color: rgba(74,222,128,.35); }
+.statChip.pending { background: rgba(251,191,36,.15); border-color: rgba(251,191,36,.3); }
+.statChipNum { font-size: 28px; font-weight: 800; color: #fff; line-height: 1; }
+.statChip.ok .statChipNum { color: #86efac; }
+.statChip.pending .statChipNum { color: #fde68a; }
+.statChipLabel { font-size: 11px; font-weight: 600; color: rgba(255,255,255,.6); text-transform: uppercase; letter-spacing: .08em; margin-top: 4px; }
+.progressTrack { height: 6px; background: rgba(255,255,255,.15); border-radius: 999px; overflow: visible; position: relative; z-index: 1; }
+.progressFill { height: 100%; background: linear-gradient(90deg, #60a5fa, #e0f2fe); border-radius: 999px; min-width: 0; transition: width .8s cubic-bezier(.4,0,.2,1); box-shadow: 0 0 14px rgba(147,197,253,.6); position: relative; }
+.progressFill::after { content: ''; position: absolute; right: -1px; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; background: #fff; border-radius: 50%; box-shadow: 0 0 8px rgba(255,255,255,.8); display: block; }
 .progressPills { flex-wrap: wrap; gap: 6px; }
 .toolbar { display: grid; grid-template-columns: 1fr repeat(3, 200px); gap: 10px; margin-bottom: 28px; padding-bottom: 24px; border-bottom: 1px solid var(--line); align-items: center; }
 .searchWrap { position: relative; display: flex; align-items: center; min-width: 0; }
@@ -267,9 +304,14 @@ aside.card .cardHead .pill { background: rgba(255,255,255,.18); border-color: rg
   background: #eef2ff;
 }
 .layout > section.card {
-  border-color: #bfdbfe;
+  border-color: #1e40af;
 }
-.layout > section.card .cardHead h2 { color: #1d4ed8; font-weight: 700; }
+.layout > section.card .cardHead { background: #1e40af; border-bottom-color: #1e3a8a; }
+.layout > section.card .cardHead h2 { color: #fff; font-weight: 700; }
+.layout > section.card .cardHead .muted { color: rgba(255,255,255,.65); }
+.layout > section.card .cardHead .pill { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.3); color: #fff; }
+.layout > section.card .cardHead .pill.ok { background: rgba(74,222,128,.25); border-color: rgba(74,222,128,.4); color: #86efac; }
+.layout > section.card .cardHead .pill.pending { background: rgba(251,191,36,.2); border-color: rgba(251,191,36,.35); color: #fde68a; }
 
 .editableBox {
   --accent: var(--accent-slate);

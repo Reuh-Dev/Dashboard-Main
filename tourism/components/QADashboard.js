@@ -31,6 +31,7 @@ const COPY = {
     selectRecord: 'اختر سجلاً',
     recordOf: (current, total) => `السجل ${current} من ${total}`,
     originalValue: 'القيمة الأصلية',
+    complete: 'مكتمل',
     save: 'حفظ',
     fieldRequired: 'هذا الحقل مطلوب',
     resetAllQA: 'إعادة تعيين جميع المحفوظات إلى قيد المراجعة',
@@ -58,6 +59,7 @@ const COPY = {
     selectRecord: 'Select a record',
     recordOf: (current, total) => `Record ${current} of ${total}`,
     originalValue: 'Original value',
+    complete: 'Complete',
     save: 'Save',
     fieldRequired: 'This field is required',
     resetAllQA: 'Reset all saved back to pending',
@@ -389,15 +391,24 @@ export default function QADashboard({ records }) {
 
       <section className="stats" aria-label="QA progress">
         <div className="progressCard">
-          <div className="progressHeader">
-            <span className="progressPct">{pct}%</span>
+          <div className="progressMain">
+            <div className="progressLeft">
+              <span className="progressPct">{pct}<span className="progressPctSymbol">%</span></span>
+              <span className="progressLabel">{t.complete}</span>
+            </div>
+            <div className="progressRight">
+              <div className="statChip ok">
+                <span className="statChipNum">{stats.validated}</span>
+                <span className="statChipLabel">{t.saved}</span>
+              </div>
+              <div className="statChip pending">
+                <span className="statChipNum">{stats.pending}</span>
+                <span className="statChipLabel">{t.pending}</span>
+              </div>
+            </div>
           </div>
           <div className="progressTrack">
             <div className="progressFill" style={{ width: `${pct}%` }} />
-          </div>
-          <div className="row progressPills">
-            <span className="pill ok">{t.saved}: {stats.validated}</span>
-            <span className="pill">{t.pending}: {stats.pending}</span>
           </div>
         </div>
       </section>
