@@ -232,7 +232,7 @@ aside.card .cardHead .pill { background: rgba(255,255,255,.18); border-color: rg
 .recordsPanel { display: flex; flex-direction: column; gap: 8px; }
 .recordsPanel.elevate { position: relative; z-index: 150; }
 .recordsPanel > aside.card { border-color: #1e40af; background: #eef2ff; }
-.layout > section.card { border-color: #1e40af; }
+.layout > section.card { border-color: #1e40af; margin-top: 44px; }
 .layout > section.card .cardHead { background: #1e40af; border-bottom-color: #1e3a8a; }
 .layout > section.card .cardHead h2 { color: #fff; font-weight: 700; }
 .layout > section.card .cardHead .muted { color: rgba(255,255,255,.65); }

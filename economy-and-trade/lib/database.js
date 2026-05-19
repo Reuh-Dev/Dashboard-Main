@@ -96,6 +96,37 @@ async function migrate(db) {
   await db.unsafe(`ALTER TABLE services DROP CONSTRAINT IF EXISTS services_record_index_key`);
   await db`CREATE UNIQUE INDEX IF NOT EXISTS idx_services_ministry_record_index ON services(ministry, record_index)`;
 
+  // Normalize directorate names — fix hamza, extra spaces, trailing periods, embedded newlines, colon prefix
+  const CANONICAL_DIR = 'المديرية العامة للاقتصاد والتجارة';
+  const dirVariants = [
+    'المديرية العامة للإقتصاد والتجارة',
+    'المديرية العامة للإقتصاد والتجارة.',
+    'المديرية العامة للاقتصاد',
+    'المديرية العامة للاقتصاد و التجارة',
+    'المديرية العامة للاقتصاد والتجارة.',
+    'المديرية العامة للاقتصاد والتجارة\nمصلحة التجارة – دائرة الشركات.',
+    'المديرية العامة:  للاقتصاد والتجارة',
+    'المديرية العامة:  للاقتصاد والتجارة\nمصلحة التجارة – دائرة المعارض والأسواق',
+    'مصلحة التجارة – دائرة الشركات',
+  ];
+  for (const variant of dirVariants) {
+    await db`UPDATE services SET directorate = ${CANONICAL_DIR}, source_directorate = ${CANONICAL_DIR} WHERE ministry = ${MINISTRY_KEY} AND directorate = ${variant}`;
+  }
+
+  // Normalize department names — remove trailing punctuation, unify consumer protection and IP names
+  const deptFixes = [
+    ['مديرية حماية المستهلك .', 'مديرية حماية المستهلك'],
+    ['مديرية حماية المستهلك.', 'مديرية حماية المستهلك'],
+    ['مصلحة حماية المستهلك', 'مديرية حماية المستهلك'],
+    ['مصلحة التجارة : دائرة الشركات', 'مصلحة التجارة – دائرة الشركات'],
+    ['مصلحة التجارة – دائرة الشركات.', 'مصلحة التجارة – دائرة الشركات'],
+    ['مصلحة التجارة – دائرة التجارة الخارجية.', 'مصلحة التجارة – دائرة التجارة الخارجية'],
+    ['مصلحة حماية الملكية', 'مصلحة حماية الملكية الفكرية'],
+  ];
+  for (const [old, fixed] of deptFixes) {
+    await db`UPDATE services SET department = ${fixed}, source_department = ${fixed} WHERE ministry = ${MINISTRY_KEY} AND department = ${old}`;
+  }
+
   await db`
     CREATE TABLE IF NOT EXISTS qa_reviews (
       service_id INTEGER PRIMARY KEY REFERENCES services(id) ON DELETE CASCADE,

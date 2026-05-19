@@ -327,6 +327,7 @@ aside.card .cardHead .pill { background: rgba(255,255,255,.18); border-color: rg
 }
 .layout > section.card {
   border-color: #1e40af;
+  margin-top: 44px;
 }
 .layout > section.card .cardHead { background: #1e40af; border-bottom-color: #1e3a8a; }
 .layout > section.card .cardHead h2 { color: #fff; font-weight: 700; }
