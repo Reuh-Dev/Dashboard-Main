@@ -194,9 +194,17 @@ aside.card .cardHead .pill { background: rgba(255,255,255,.18); border-color: rg
 .original summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 .sep { height: 1px; background: var(--line); margin: 16px 0; }
 .empty { padding: 26px; text-align: center; color: var(--muted); }
-.serviceBar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
-.addServiceBtn { font-size: 13px; font-weight: 600; padding: 7px 16px; min-height: 36px; background: #1e40af; color: #fff; border-color: #1e40af; }
-.addServiceBtn:hover { background: #1d3a9e; border-color: #1d3a9e; }
+.serviceBar { display: flex; gap: 8px; justify-content: flex-end; }
+.addServiceBtn { font-size: 13px; font-weight: 600; padding: 7px 16px; min-height: 36px; background: #16a34a; color: #fff; border-color: #16a34a; }
+.addServiceBtn:hover { background: #15803d; border-color: #15803d; }
+.removeServiceBtn { font-size: 13px; font-weight: 600; padding: 7px 16px; min-height: 36px; background: #ef4444; color: #fff; border-color: #ef4444; }
+.removeServiceBtn:hover { background: #dc2626; border-color: #dc2626; }
+.deleteOverlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); backdrop-filter: blur(3px); z-index: 100; cursor: pointer; }
+.deleteModeHeader { background: #ef4444; color: #fff; padding: 10px 18px; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.deleteModeHeader button { background: transparent; border: 0; color: rgba(255,255,255,.8); cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 4px; }
+.deleteModeHeader button:hover { color: #fff; }
+.item.deleteHover:hover { background: #fff5f5; border-color: #ef4444; box-shadow: 0 2px 8px rgba(239,68,68,.2); cursor: pointer; }
+.deleteConfirmModal .serviceModalHead { background: #ef4444; }
 .serviceModalOverlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 200; }
 .serviceModal { background: #fff; border-radius: var(--radius); width: 460px; max-width: 90vw; box-shadow: 0 20px 60px rgba(0,0,0,0.2); overflow: hidden; }
 .serviceModalHead { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: #1e40af; color: #fff; font-weight: 700; font-size: 15px; }
@@ -213,15 +221,17 @@ aside.card .cardHead .pill { background: rgba(255,255,255,.18); border-color: rg
 .wrap.rtl .headerActions, .wrap.rtl .row { direction: rtl; }
 .wrap.ltr .headerActions, .wrap.ltr .row { direction: ltr; }
 .wrap.rtl .layout { grid-template-columns: minmax(0, 1fr) 480px; }
-.wrap.rtl .layout > aside.card { grid-column: 2; }
+.wrap.rtl .layout > .recordsPanel { grid-column: 2; }
 .wrap.rtl .layout > section.card { grid-column: 1; grid-row: 1; }
-.wrap.ltr .layout > aside.card, .wrap.ltr .layout > section.card { grid-column: auto; grid-row: auto; }
+.wrap.ltr .layout > .recordsPanel, .wrap.ltr .layout > section.card { grid-column: auto; grid-row: auto; }
 
 .languageToggle { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 4px; }
 .toggleBtn { border: 0; border-radius: 999px; background: transparent; color: #4f46e5; cursor: pointer; font-weight: 700; min-height: 34px; padding: 0 12px; }
 .toggleBtn.active { background: #4f46e5; color: #fff; }
 
-.layout > aside.card { border-color: #1e40af; background: #eef2ff; }
+.recordsPanel { display: flex; flex-direction: column; gap: 8px; }
+.recordsPanel.elevate { position: relative; z-index: 150; }
+.recordsPanel > aside.card { border-color: #1e40af; background: #eef2ff; }
 .layout > section.card { border-color: #1e40af; }
 .layout > section.card .cardHead { background: #1e40af; border-bottom-color: #1e3a8a; }
 .layout > section.card .cardHead h2 { color: #fff; font-weight: 700; }
@@ -268,7 +278,7 @@ aside.card .cardHead .pill { background: rgba(255,255,255,.18); border-color: rg
   .toolbar { grid-template-columns: 1fr 1fr; }
   .toolbarSearch { grid-column: 1 / -1; }
   .wrap.rtl .layout, .wrap.ltr .layout { grid-template-columns: 1fr; }
-  .wrap.rtl .layout > aside.card, .wrap.rtl .layout > section.card,
-  .wrap.ltr .layout > aside.card, .wrap.ltr .layout > section.card { grid-column: auto; grid-row: auto; }
+  .wrap.rtl .layout > .recordsPanel, .wrap.rtl .layout > section.card,
+  .wrap.ltr .layout > .recordsPanel, .wrap.ltr .layout > section.card { grid-column: auto; grid-row: auto; }
   .list { max-height: 360px; }
 }
