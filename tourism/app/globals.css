@@ -293,6 +293,22 @@ aside.card .cardHead { background: #eef2ff; border-bottom-color: #c7d2fe; }
   box-shadow: 0 0 0 3px rgba(37, 99, 235, .08);
 }
 
+.editableBox.fieldError {
+  --accent: #ef4444;
+  animation: shake 0.3s ease;
+}
+.fieldErrorMsg {
+  color: #ef4444;
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin: 0;
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
 .autoText {
   direction: auto;
   text-align: start;

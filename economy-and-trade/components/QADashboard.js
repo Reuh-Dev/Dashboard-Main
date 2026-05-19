@@ -32,18 +32,14 @@ const COPY = {
     searchPlaceholder: 'ابحث في الخدمات…',
     allRecords: 'كل السجلات',
     saved: 'محفوظ',
-    editedFilter: 'معدّل',
-    flagged: 'تنبيهات',
     records: 'السجلات',
     shown: 'ظاهر',
     noMatchingRecords: 'لا توجد سجلات مطابقة.',
     selectRecord: 'اختر سجلاً',
     recordOf: (current, total) => `السجل ${current} من ${total}`,
-    textFlags: 'تنبيهات نصية',
-    flag: 'تنبيه',
-    edited: 'معدّل',
     originalValue: 'القيمة الأصلية',
     save: 'حفظ',
+    fieldRequired: 'هذا الحقل مطلوب',
     resetRecordEdits: 'إلغاء تعديلات السجل',
     emptySelect: 'اختر سجلاً للبدء بالتدقيق.',
     allDirectorates: 'كل المديريات',
@@ -59,18 +55,14 @@ const COPY = {
     searchPlaceholder: 'Search services…',
     allRecords: 'All records',
     saved: 'Saved',
-    editedFilter: 'Edited',
-    flagged: 'Flags',
     records: 'Records',
     shown: 'shown',
     noMatchingRecords: 'No records match this view.',
     selectRecord: 'Select a record',
     recordOf: (current, total) => `Record ${current} of ${total}`,
-    textFlags: 'Text flags',
-    flag: 'flag',
-    edited: 'Edited',
     originalValue: 'Original value',
     save: 'Save',
+    fieldRequired: 'This field is required',
     resetRecordEdits: 'Reset record edits',
     emptySelect: 'Select a record to begin QA.',
     allDirectorates: 'All directorates',
@@ -107,15 +99,6 @@ function statusClass(status) {
   return 'pending';
 }
 
-function getFlags(record) {
-  const text = `${record?.service_name || ''}\n${record?.required_documents || ''}\n${record?.notes || ''}`;
-  const rules = [
-    ['Link', 'يحتوي على نص مؤقت: Link'],
-    ['نوذج', 'احتمال خطأ مطبعي: نوذج'],
-    ['وزراة', 'احتمال خطأ مطبعي: وزراة'],
-  ];
-  return rules.filter(([needle]) => text.includes(needle)).map(([, label]) => label);
-}
 
 function downloadBlob(content, filename, type) {
   const blob = new Blob([content], { type });
@@ -174,6 +157,7 @@ export default function QADashboard({ records }) {
   const [showLogin, setShowLogin] = useState(false);
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [loginError, setLoginError] = useState('');
+  const [saveErrors, setSaveErrors] = useState(new Set());
   const saveTimers = useRef({});
 
   const isArabic = uiLanguage === 'ar';
@@ -294,9 +278,23 @@ export default function QADashboard({ records }) {
     if (!EDITABLE_FIELDS.includes(field)) return;
     updateLocalRecord(index, { [field]: value });
     queueRecordSave(index, field, value);
+    if (saveErrors.has(field) && String(value).trim()) {
+      setSaveErrors((prev) => { const next = new Set(prev); next.delete(field); return next; });
+    }
   }
 
   async function markValidated(index) {
+    const record = getRecord(index);
+    const emptyFields = EDITABLE_FIELDS.filter((f) => !String(record?.[f] || '').trim());
+    if (emptyFields.length) {
+      setSaveErrors(new Set(emptyFields));
+      setTimeout(() => {
+        const el = document.querySelector('.fieldError');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+      return;
+    }
+    setSaveErrors(new Set());
     setQa((current) => ({
       ...current,
       [recordKey(index)]: { ...(current[recordKey(index)] || {}), status: 'validated', corrected_required_documents: '', qa_note: '', updated_at: new Date().toISOString() }
@@ -328,13 +326,12 @@ export default function QADashboard({ records }) {
   }
 
   const stats = useMemo(() => {
-    let validated = 0; let pending = 0; let edited = 0;
+    let validated = 0; let pending = 0;
     currentRecords.forEach((_, index) => {
       const status = getQA(index).status || 'pending';
       if (status === 'validated') validated += 1; else pending += 1;
-      if (recordHasDataEdit(index)) edited += 1;
     });
-    return { validated, pending, edited };
+    return { validated, pending };
   }, [qa, currentRecords]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const directorates = useMemo(() =>
@@ -353,13 +350,16 @@ export default function QADashboard({ records }) {
       const status = getQA(index).status || 'pending';
       const haystack = EDITABLE_FIELDS.map((f) => record[f] || '').join('\n');
       const matchesSearch = !query || normalize(haystack).toLowerCase().includes(query);
-      const matchesFilter = filter === 'all'
-        || (filter === 'flagged' ? getFlags(record).length > 0 : filter === 'edited' ? recordHasDataEdit(index) : status === filter);
+      const matchesFilter = filter === 'all' || status === filter;
       const matchesDir = directorateFilter === 'all' || record.directorate === directorateFilter;
       const matchesSub = subDirectorateFilter === 'all' || record.sub_directorate === subDirectorateFilter;
       return matchesSearch && matchesFilter && matchesDir && matchesSub;
     });
   }, [currentRecords, search, filter, directorateFilter, subDirectorateFilter, qa]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setSaveErrors(new Set());
+  }, [selected]);
 
   useEffect(() => {
     if (shown.length && !shown.includes(selected)) setSelected(shown[0]);
@@ -369,7 +369,6 @@ export default function QADashboard({ records }) {
   const selectedSourceRecord = getSourceRecord(selected);
   const selectedState = selectedRecord ? getQA(selected) : {};
   const selectedStatus = selectedState.status || 'pending';
-  const selectedFlags = selectedRecord ? getFlags(selectedRecord) : [];
   const selectedEdited = selectedRecord ? recordHasDataEdit(selected) : false;
   const pct = currentRecords.length ? Math.round((stats.validated / currentRecords.length) * 100) : 0;
 
@@ -392,7 +391,6 @@ export default function QADashboard({ records }) {
           <div className="row progressPills">
             <span className="pill ok">{t.saved}: {stats.validated}</span>
             <span className="pill">{t.pending}: {stats.pending}</span>
-            {stats.edited ? <span className="pill edited">{t.editedFilter}: {stats.edited}</span> : null}
           </div>
         </div>
       </section>
@@ -409,8 +407,6 @@ export default function QADashboard({ records }) {
           { value: 'all', label: t.allRecords },
           { value: 'pending', label: t.pending },
           { value: 'validated', label: t.saved },
-          { value: 'edited', label: t.editedFilter },
-          { value: 'flagged', label: t.flagged }
         ]} rtl={isArabic} />
         <CustomSelect value={directorateFilter} onChange={(v) => { setDirectorateFilter(v); setSubDirectorateFilter('all'); }}
           options={[{ value: 'all', label: t.allDirectorates }, ...directorates.map((d) => ({ value: d, label: d }))]} rtl={isArabic} />
@@ -428,15 +424,11 @@ export default function QADashboard({ records }) {
             {shown.length ? shown.map((index) => {
               const record = getRecord(index);
               const status = getQA(index).status || 'pending';
-              const flags = getFlags(record).length;
-              const edited = recordHasDataEdit(index);
               return (
                 <button key={index} className={`item ${index === selected ? 'active' : ''}`} onClick={() => setSelected(index)}>
                   <span className={isArabic ? 'ar name' : 'autoText name'} dir={isArabic ? 'rtl' : 'auto'}>{record.service_name}</span>
                   <span className="row" style={{ justifyContent: 'flex-end' }}>
                     <span className={`pill ${statusClass(status)}`}>{statusText(status, t)}</span>
-                    {edited ? <span className="pill edited">{t.edited}</span> : null}
-                    {flags ? <span className="pill flag">{flags} {t.flag}</span> : null}
                   </span>
                 </button>
               );
@@ -457,15 +449,6 @@ export default function QADashboard({ records }) {
           <div className="cardBody">
             {selectedRecord ? (
               <>
-                {selectedFlags.length ? (
-                  <>
-                    <div className="sep" />
-                    <div className="box">
-                      <h3>{t.textFlags}</h3>
-                      <div className="row">{selectedFlags.map((flag) => <span key={flag} className="pill flag">{flag}</span>)}</div>
-                    </div>
-                  </>
-                ) : null}
                 <div className="sep" />
                 {EDITABLE_FIELDS.map((field) => (
                   <EditableTextArea
@@ -481,6 +464,7 @@ export default function QADashboard({ records }) {
                     compact={COMPACT_FIELDS.has(field)}
                     rtl={isArabic}
                     placeholder={FIELD_META[field]?.[uiLanguage]?.placeholder || ''}
+                    hasError={saveErrors.has(field)}
                   />
                 ))}
                 <div className="sep" />
@@ -558,14 +542,13 @@ function CustomSelect({ value, onChange, options, rtl = false }) {
   );
 }
 
-function EditableTextArea({ title, field, selected, selectedRecord, selectedSourceRecord, fieldHasDataEdit, updateDataCell, compact = false, rtl = false, placeholder = '', labels }) {
+function EditableTextArea({ title, field, selected, selectedRecord, selectedSourceRecord, fieldHasDataEdit, updateDataCell, compact = false, rtl = false, placeholder = '', labels, hasError = false }) {
   const edited = fieldHasDataEdit(selected, field);
   return (
     <>
-      <div className={`box editableBox field-${field}`}>
+      <div className={`box editableBox field-${field}${hasError ? ' fieldError' : ''}`}>
         <div className="labelRow">
           <h3>{title}</h3>
-          {edited ? <span className="pill edited">{labels.edited}</span> : null}
         </div>
         <textarea
           className={`cellInput ${compact ? 'compact' : ''} ${rtl ? 'ar' : 'autoText'}`}
@@ -574,6 +557,7 @@ function EditableTextArea({ title, field, selected, selectedRecord, selectedSour
           onChange={(e) => updateDataCell(selected, field, e.target.value)}
           placeholder={placeholder}
         />
+        {hasError && <p className="fieldErrorMsg">{labels.fieldRequired}</p>}
         {edited ? (
           <details className="original">
             <summary>{labels.originalValue}</summary>
