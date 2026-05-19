@@ -1,7 +1,7 @@
 import postgres from 'postgres';
 import sourceData from '@/data/economy_and_trade_services.json';
 
-const EDITABLE_FIELDS = ['service_name', 'directorate', 'sub_directorate', 'required_documents', 'fees', 'notes'];
+const EDITABLE_FIELDS = ['service_name', 'directorate', 'department', 'required_documents', 'fees', 'notes'];
 const SOURCE_FILE = 'etr_services.json';
 const MINISTRY_KEY = 'economy';
 
@@ -30,7 +30,7 @@ function readSourceRecords() {
     service_code: clean(r?.service_code),
     service_name: clean(r?.service_name),
     directorate: clean(r?.directorate),
-    sub_directorate: clean(r?.sub_directorate),
+    department: clean(r?.department || r?.sub_directorate),
     required_documents: clean(r?.required_documents),
     fees: clean(r?.fees),
     notes: clean(r?.notes)
@@ -74,6 +74,8 @@ async function migrate(db) {
     ['directorate', "TEXT NOT NULL DEFAULT ''"],
     ['source_sub_directorate', "TEXT NOT NULL DEFAULT ''"],
     ['sub_directorate', "TEXT NOT NULL DEFAULT ''"],
+    ['source_department', "TEXT NOT NULL DEFAULT ''"],
+    ['department', "TEXT NOT NULL DEFAULT ''"],
     ['source_fees', "TEXT NOT NULL DEFAULT ''"],
     ['fees', "TEXT NOT NULL DEFAULT ''"],
     ['source_notes', "TEXT NOT NULL DEFAULT ''"],
@@ -85,6 +87,10 @@ async function migrate(db) {
 
   // Migrate existing rows that have no ministry set
   await db`UPDATE services SET ministry = ${MINISTRY_KEY} WHERE ministry = ''`;
+
+  // Migrate sub_directorate data into department column
+  await db`UPDATE services SET department = sub_directorate WHERE department = '' AND sub_directorate != ''`;
+  await db`UPDATE services SET source_department = source_sub_directorate WHERE source_department = '' AND source_sub_directorate != ''`;
 
   // Drop old single-column unique constraint and replace with composite
   await db.unsafe(`ALTER TABLE services DROP CONSTRAINT IF EXISTS services_record_index_key`);
@@ -128,7 +134,7 @@ async function seed(db) {
           source_service_code, service_code,
           source_service_name, service_name,
           source_directorate, directorate,
-          source_sub_directorate, sub_directorate,
+          source_department, department,
           source_required_documents, required_documents,
           source_fees, fees,
           source_notes, notes,
@@ -138,7 +144,7 @@ async function seed(db) {
           ${record.service_code}, ${record.service_code},
           ${record.service_name}, ${record.service_name},
           ${record.directorate}, ${record.directorate},
-          ${record.sub_directorate}, ${record.sub_directorate},
+          ${record.department}, ${record.department},
           ${record.required_documents}, ${record.required_documents},
           ${record.fees}, ${record.fees},
           ${record.notes}, ${record.notes},
@@ -151,8 +157,8 @@ async function seed(db) {
           service_name = CASE WHEN services.service_name = '' THEN EXCLUDED.service_name ELSE services.service_name END,
           source_directorate = EXCLUDED.source_directorate,
           directorate = CASE WHEN services.directorate = '' THEN EXCLUDED.directorate ELSE services.directorate END,
-          source_sub_directorate = EXCLUDED.source_sub_directorate,
-          sub_directorate = CASE WHEN services.sub_directorate = '' THEN EXCLUDED.sub_directorate ELSE services.sub_directorate END,
+          source_department = EXCLUDED.source_department,
+          department = CASE WHEN services.department = '' THEN EXCLUDED.department ELSE services.department END,
           source_required_documents = EXCLUDED.source_required_documents,
           required_documents = CASE WHEN services.required_documents = '' THEN EXCLUDED.required_documents ELSE services.required_documents END,
           source_fees = EXCLUDED.source_fees,
@@ -188,8 +194,8 @@ function mapRow(row) {
     service_name: row.service_name || '',
     source_directorate: row.source_directorate || '',
     directorate: row.directorate || '',
-    source_sub_directorate: row.source_sub_directorate || '',
-    sub_directorate: row.sub_directorate || '',
+    source_department: row.source_department || '',
+    department: row.department || '',
     source_required_documents: row.source_required_documents || '',
     required_documents: row.required_documents || '',
     source_fees: row.source_fees || '',
@@ -288,7 +294,7 @@ export async function resetRecordEdits(recordIndex) {
       UPDATE services SET
         service_name = source_service_name,
         directorate = source_directorate,
-        sub_directorate = source_sub_directorate,
+        department = source_department,
         required_documents = source_required_documents,
         fees = source_fees,
         notes = source_notes,

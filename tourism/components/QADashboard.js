@@ -2,18 +2,18 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-const EDITABLE_FIELDS = ['service_name', 'directorate', 'sub_directorate', 'required_documents', 'fees', 'notes'];
+const EDITABLE_FIELDS = ['service_name', 'directorate', 'department', 'required_documents', 'fees', 'notes'];
 
 const FIELD_META = {
   service_name:       { ar: { label: 'اسم الخدمة',          placeholder: 'أدخل اسم الخدمة…'          }, en: { label: 'Service Name',      placeholder: 'Enter service name…'      } },
   directorate:        { ar: { label: 'المديرية',             placeholder: 'أدخل المديرية…'             }, en: { label: 'Directorate',        placeholder: 'Enter directorate…'        } },
-  sub_directorate:    { ar: { label: 'المديرية الفرعية',     placeholder: 'أدخل المديرية الفرعية…'     }, en: { label: 'Sub-Directorate',    placeholder: 'Enter sub-directorate…'    } },
+  department:         { ar: { label: 'القسم',                placeholder: 'أدخل القسم…'                }, en: { label: 'Department',         placeholder: 'Enter department…'         } },
   required_documents: { ar: { label: 'المستندات المطلوبة',   placeholder: 'أدخل المستندات المطلوبة…'   }, en: { label: 'Required Documents', placeholder: 'Enter required documents…' } },
   fees:               { ar: { label: 'الرسوم',               placeholder: 'أدخل الرسوم…'               }, en: { label: 'Fees',               placeholder: 'Enter fees…'               } },
   notes:              { ar: { label: 'ملاحظات',              placeholder: 'أدخل الملاحظات…'            }, en: { label: 'Notes',              placeholder: 'Enter notes…'              } },
 };
 
-const COMPACT_FIELDS = new Set(['service_name', 'directorate', 'sub_directorate', 'fees']);
+const COMPACT_FIELDS = new Set(['service_name', 'directorate', 'department', 'fees']);
 
 const COPY = {
   ar: {
@@ -41,7 +41,6 @@ const COPY = {
     confirmNo: 'إلغاء',
     emptySelect: 'اختر سجلاً للبدء بالتدقيق.',
     allDirectorates: 'كل المديريات',
-    allSubDirectorates: 'كل المديريات الفرعية',
     status: { validated: 'محفوظ', no: 'لا', pending: 'قيد المراجعة' }
   },
   en: {
@@ -69,7 +68,6 @@ const COPY = {
     confirmNo: 'Cancel',
     emptySelect: 'Select a record to begin QA.',
     allDirectorates: 'All directorates',
-    allSubDirectorates: 'All sub-directorates',
     status: { validated: 'Saved', no: 'No', pending: 'Pending' }
   }
 };
@@ -150,7 +148,6 @@ export default function QADashboard({ records }) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [directorateFilter, setDirectorateFilter] = useState('all');
-  const [subDirectorateFilter, setSubDirectorateFilter] = useState('all');
   const [dbRecords, setDbRecords] = useState(initialRecords);
   const [qa, setQa] = useState({});
   const [, setDatabaseStatus] = useState('جارٍ تحميل قاعدة البيانات…');
@@ -342,11 +339,6 @@ export default function QADashboard({ records }) {
     [...new Set(currentRecords.map((r) => r.directorate).filter(Boolean))].sort(),
     [currentRecords]
   );
-  const subDirectorates = useMemo(() => {
-    const pool = directorateFilter === 'all' ? currentRecords : currentRecords.filter((r) => r.directorate === directorateFilter);
-    return [...new Set(pool.map((r) => r.sub_directorate).filter(Boolean))].sort();
-  }, [currentRecords, directorateFilter]);
-
   const shown = useMemo(() => {
     const query = normalize(search).toLowerCase();
     return currentRecords.map((_, i) => i).filter((index) => {
@@ -356,10 +348,9 @@ export default function QADashboard({ records }) {
       const matchesSearch = !query || normalize(haystack).toLowerCase().includes(query);
       const matchesFilter = filter === 'all' || status === filter;
       const matchesDir = directorateFilter === 'all' || record.directorate === directorateFilter;
-      const matchesSub = subDirectorateFilter === 'all' || record.sub_directorate === subDirectorateFilter;
-      return matchesSearch && matchesFilter && matchesDir && matchesSub;
+      return matchesSearch && matchesFilter && matchesDir;
     });
-  }, [currentRecords, search, filter, directorateFilter, subDirectorateFilter, qa]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentRecords, search, filter, directorateFilter, qa]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setSaveErrors(new Set());
@@ -426,10 +417,8 @@ export default function QADashboard({ records }) {
           { value: 'pending', label: t.pending },
           { value: 'validated', label: t.saved },
         ]} rtl={isArabic} />
-        <CustomSelect value={directorateFilter} onChange={(v) => { setDirectorateFilter(v); setSubDirectorateFilter('all'); }}
+        <CustomSelect value={directorateFilter} onChange={setDirectorateFilter}
           options={[{ value: 'all', label: t.allDirectorates }, ...directorates.map((d) => ({ value: d, label: d }))]} rtl={isArabic} />
-        <CustomSelect value={subDirectorateFilter} onChange={setSubDirectorateFilter}
-          options={[{ value: 'all', label: t.allSubDirectorates }, ...subDirectorates.map((s) => ({ value: s, label: s }))]} rtl={isArabic} />
       </div>
 
       <section className="layout">

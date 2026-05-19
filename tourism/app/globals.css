@@ -103,7 +103,7 @@ input:focus, select:focus, textarea:focus { border-color: #aaa; box-shadow: 0 0 
 .progressFill { height: 100%; background: linear-gradient(90deg, #60a5fa, #e0f2fe); border-radius: 999px; min-width: 0; transition: width .8s cubic-bezier(.4,0,.2,1); box-shadow: 0 0 14px rgba(147,197,253,.6); position: relative; }
 .progressFill::after { content: ''; position: absolute; right: -1px; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; background: #fff; border-radius: 50%; box-shadow: 0 0 8px rgba(255,255,255,.8); display: block; }
 .progressPills { flex-wrap: wrap; gap: 6px; }
-.toolbar { display: grid; grid-template-columns: 1fr repeat(3, 200px); gap: 10px; margin-bottom: 28px; padding-bottom: 24px; border-bottom: 1px solid var(--line); align-items: center; }
+.toolbar { display: grid; grid-template-columns: 1fr repeat(2, 200px); gap: 10px; margin-bottom: 28px; padding-bottom: 24px; border-bottom: 1px solid var(--line); align-items: center; }
 .searchWrap { position: relative; display: flex; align-items: center; min-width: 0; }
 .searchIcon { position: absolute; left: 16px; color: var(--muted); pointer-events: none; flex-shrink: 0; }
 .toolbarSearch { border-radius: 999px; padding-left: 42px; }
@@ -321,7 +321,7 @@ aside.card .cardHead .pill { background: rgba(255,255,255,.18); border-color: rg
 
 .field-service_name { --accent: var(--accent-blue); }
 .field-directorate { --accent: var(--accent-purple); }
-.field-sub_directorate { --accent: var(--accent-cyan); }
+.field-department { --accent: var(--accent-cyan); }
 .field-required_documents { --accent: var(--accent-green); }
 .field-fees { --accent: var(--accent-orange); }
 .field-notes { --accent: var(--accent-pink); }
