@@ -211,7 +211,7 @@ aside.card .cardHead .pill { background: rgba(255,255,255,.18); border-color: rg
 .editHint { margin: -2px 0 12px; }
 .sep { height: 1px; background: var(--line); margin: 16px 0; }
 .empty { padding: 26px; text-align: center; color: var(--muted); }
-.serviceBar { display: flex; gap: 8px; justify-content: flex-end; }
+.serviceBar { display: flex; gap: 8px; justify-content: flex-start; }
 .addServiceBtn { font-size: 13px; font-weight: 600; padding: 7px 16px; min-height: 36px; background: #16a34a; color: #fff; border-color: #16a34a; }
 .addServiceBtn:hover { background: #15803d; border-color: #15803d; }
 .removeServiceBtn { font-size: 13px; font-weight: 600; padding: 7px 16px; min-height: 36px; background: #ef4444; color: #fff; border-color: #ef4444; }
