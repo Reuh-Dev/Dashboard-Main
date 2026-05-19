@@ -48,6 +48,7 @@ const COPY = {
     confirmNo: 'إلغاء',
     emptySelect: 'اختر سجلاً للبدء بالتدقيق.',
     allDirectorates: 'كل المديريات',
+    allDepartments: 'كل الأقسام',
     status: { validated: 'محفوظ', no: 'لا', pending: 'قيد المراجعة' }
   },
   en: {
@@ -75,6 +76,7 @@ const COPY = {
     confirmNo: 'Cancel',
     emptySelect: 'Select a record to begin QA.',
     allDirectorates: 'All directorates',
+    allDepartments: 'All departments',
     status: { validated: 'Saved', no: 'No', pending: 'Pending' }
   }
 };
@@ -155,6 +157,7 @@ export default function QADashboard({ records }) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [directorateFilter, setDirectorateFilter] = useState('all');
+  const [departmentFilter, setDepartmentFilter] = useState('all');
   const [dbRecords, setDbRecords] = useState(initialRecords);
   const [qa, setQa] = useState({});
   const [, setDatabaseStatus] = useState('جارٍ تحميل قاعدة البيانات…');
@@ -346,6 +349,10 @@ export default function QADashboard({ records }) {
     [...new Set(currentRecords.map((r) => r.directorate).filter(Boolean))].sort(),
     [currentRecords]
   );
+  const departments = useMemo(() => {
+    const pool = directorateFilter === 'all' ? currentRecords : currentRecords.filter((r) => r.directorate === directorateFilter);
+    return [...new Set(pool.map((r) => r.department).filter(Boolean))].sort();
+  }, [currentRecords, directorateFilter]);
   const shown = useMemo(() => {
     const query = normalize(search).toLowerCase();
     return currentRecords.map((_, i) => i).filter((index) => {
@@ -355,9 +362,10 @@ export default function QADashboard({ records }) {
       const matchesSearch = !query || normalize(haystack).toLowerCase().includes(query);
       const matchesFilter = filter === 'all' || status === filter;
       const matchesDir = directorateFilter === 'all' || record.directorate === directorateFilter;
-      return matchesSearch && matchesFilter && matchesDir;
+      const matchesDept = departmentFilter === 'all' || record.department === departmentFilter;
+      return matchesSearch && matchesFilter && matchesDir && matchesDept;
     });
-  }, [currentRecords, search, filter, directorateFilter, qa]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentRecords, search, filter, directorateFilter, departmentFilter, qa]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setSaveErrors(new Set());
@@ -424,8 +432,10 @@ export default function QADashboard({ records }) {
           { value: 'pending', label: t.pending },
           { value: 'validated', label: t.saved },
         ]} rtl={isArabic} />
-        <CustomSelect value={directorateFilter} onChange={setDirectorateFilter}
+        <CustomSelect value={directorateFilter} onChange={(v) => { setDirectorateFilter(v); setDepartmentFilter('all'); }}
           options={[{ value: 'all', label: t.allDirectorates }, ...directorates.map((d) => ({ value: d, label: d }))]} rtl={isArabic} />
+        <CustomSelect value={departmentFilter} onChange={setDepartmentFilter}
+          options={[{ value: 'all', label: t.allDepartments }, ...departments.map((d) => ({ value: d, label: d }))]} rtl={isArabic} />
       </div>
 
       <section className="layout">
