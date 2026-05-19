@@ -40,6 +40,7 @@ const COPY = {
     originalValue: 'القيمة الأصلية',
     save: 'حفظ',
     fieldRequired: 'هذا الحقل مطلوب',
+    resetAllQA: 'إعادة تعيين جميع المحفوظات إلى قيد المراجعة',
     resetRecordEdits: 'إلغاء تعديلات السجل',
     emptySelect: 'اختر سجلاً للبدء بالتدقيق.',
     allDirectorates: 'كل المديريات',
@@ -63,6 +64,7 @@ const COPY = {
     originalValue: 'Original value',
     save: 'Save',
     fieldRequired: 'This field is required',
+    resetAllQA: 'Reset all saved back to pending',
     resetRecordEdits: 'Reset record edits',
     emptySelect: 'Select a record to begin QA.',
     allDirectorates: 'All directorates',
@@ -503,6 +505,11 @@ export default function QADashboard({ records }) {
               <button className="btn primary" style={{ width: '100%' }} onClick={() => { exportCorrectedJSON(); setShowAdmin(false); }}>
                 {isArabic ? 'تصدير JSON المصحّح' : 'Export corrected JSON'}
               </button>
+              <div style={{ height: 10 }} />
+              <button className="btn ghost" style={{ width: '100%', color: '#ef4444', borderColor: '#ef4444' }} onClick={async () => {
+                if (!window.confirm(isArabic ? 'هل أنت متأكد؟ سيتم إعادة تعيين جميع المحفوظات إلى قيد المراجعة.' : 'Are you sure? All saved records will be reset to pending.')) return;
+                try { await postDatabaseAction({ action: 'reset_all_qa' }, { applyState: true }); setShowAdmin(false); setToast(isArabic ? 'تمت إعادة التعيين' : 'Reset complete'); } catch (e) { setDatabaseStatus(e.message); }
+              }}>{t.resetAllQA}</button>
             </div>
           </div>
         </div>
