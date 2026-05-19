@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { clearQA, getAuditLog, getState, importQA, importRecords, resetAllQA, resetRecordEdits, saveQA, updateRecord } from '@/lib/database';
+import { addService, clearQA, deleteService, getAuditLog, getState, importQA, importRecords, resetAllQA, resetRecordEdits, saveQA, updateRecord } from '@/lib/database';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -40,6 +40,13 @@ export async function POST(request) {
         return NextResponse.json(await importRecords(body.corrected_records));
       case 'import_qa':
         return NextResponse.json(await importQA(body.qa));
+      case 'add_service': {
+        const serviceName = String(body.service_name || '').trim();
+        if (!serviceName) throw new Error('service_name is required.');
+        return NextResponse.json(await addService(serviceName));
+      }
+      case 'delete_service':
+        return NextResponse.json(await deleteService(body.record_index));
       default:
         return jsonError(new Error('Unknown database action.'), 400);
     }

@@ -407,6 +407,51 @@ export async function importQA(qa) {
   return getState();
 }
 
+export async function addService(serviceName) {
+  await ensureDatabaseReady();
+  const db = getSql();
+  const createdAt = now();
+  const [{ max_index }] = await db`SELECT COALESCE(MAX(record_index), -1) AS max_index FROM services WHERE ministry = ${MINISTRY_KEY}`;
+  const newIndex = Number(max_index) + 1;
+  const [newService] = await db`
+    INSERT INTO services (
+      record_index, ministry, source_filename, filename,
+      source_service_code, service_code,
+      source_service_name, service_name,
+      source_directorate, directorate,
+      source_department, department,
+      source_required_documents, required_documents,
+      source_fees, fees,
+      source_notes, notes,
+      created_at, updated_at
+    ) VALUES (
+      ${newIndex}, ${MINISTRY_KEY}, '', '',
+      '', '',
+      ${String(serviceName)}, ${String(serviceName)},
+      '', '',
+      '', '',
+      '', '',
+      '', '',
+      '', '',
+      ${createdAt}, ${createdAt}
+    ) RETURNING id
+  `;
+  await insertAudit(db, newService.id, 'add_service', 'service_name', null, String(serviceName));
+  return getState();
+}
+
+export async function deleteService(recordIndex) {
+  if (!Number.isInteger(recordIndex) || recordIndex < 0) throw new Error('record_index must be a zero-based integer.');
+  await ensureDatabaseReady();
+  const db = getSql();
+  await db.begin(async (tx) => {
+    const service = await getServiceByIndex(tx, recordIndex);
+    await insertAudit(tx, service.id, 'delete_service', 'service_name', service.service_name, null);
+    await tx`DELETE FROM services WHERE id = ${service.id}`;
+  });
+  return getState();
+}
+
 export async function getAuditLog(limit = 200) {
   await ensureDatabaseReady();
   const db = getSql();

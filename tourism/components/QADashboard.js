@@ -42,6 +42,13 @@ const COPY = {
     emptySelect: 'اختر سجلاً للبدء بالتدقيق.',
     allDirectorates: 'كل المديريات',
     allDepartments: 'كل الأقسام',
+    addService: '+ إضافة خدمة',
+    addServiceTitle: 'إضافة خدمة جديدة',
+    serviceNameLabel: 'اسم الخدمة',
+    serviceNamePlaceholder: 'أدخل اسم الخدمة…',
+    addBtn: 'إضافة',
+    deleteService: 'حذف الخدمة',
+    confirmDeleteMsg: 'هل أنت متأكد من حذف هذه الخدمة؟',
     status: { validated: 'محفوظ', no: 'لا', pending: 'قيد المراجعة' }
   },
   en: {
@@ -70,6 +77,13 @@ const COPY = {
     emptySelect: 'Select a record to begin QA.',
     allDirectorates: 'All directorates',
     allDepartments: 'All departments',
+    addService: '+ Add Service',
+    addServiceTitle: 'Add New Service',
+    serviceNameLabel: 'Service Name',
+    serviceNamePlaceholder: 'Enter service name…',
+    addBtn: 'Add',
+    deleteService: 'Delete Service',
+    confirmDeleteMsg: 'Are you sure you want to delete this service?',
     status: { validated: 'Saved', no: 'No', pending: 'Pending' }
   }
 };
@@ -151,6 +165,9 @@ export default function QADashboard({ records }) {
   const [filter, setFilter] = useState('all');
   const [directorateFilter, setDirectorateFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newServiceName, setNewServiceName] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [dbRecords, setDbRecords] = useState(initialRecords);
   const [qa, setQa] = useState({});
   const [, setDatabaseStatus] = useState('جارٍ تحميل قاعدة البيانات…');
@@ -168,12 +185,6 @@ export default function QADashboard({ records }) {
   const t = COPY[uiLanguage];
 
   const currentRecords = useMemo(() => [...dbRecords].sort((a, b) => a.record_index - b.record_index), [dbRecords]);
-
-  const sourceRecords = useMemo(() => currentRecords.map((r) => {
-    const result = { service_code: r.source_service_code };
-    EDITABLE_FIELDS.forEach((f) => { result[f] = r[`source_${f}`] || ''; });
-    return result;
-  }), [currentRecords]);
 
   function applyDatabaseState(payload) {
     if (Array.isArray(payload?.records)) setDbRecords(payload.records.map(cleanDbRecord));
@@ -247,9 +258,13 @@ export default function QADashboard({ records }) {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  function getRecord(index) { return currentRecords[index] || null; }
-  function getSourceRecord(index) {
-    return sourceRecords[index] || Object.fromEntries([['service_code', ''], ...EDITABLE_FIELDS.map((f) => [f, ''])]);
+  function getRecord(recordIndex) { return currentRecords.find((r) => r.record_index === recordIndex) || null; }
+  function getSourceRecord(recordIndex) {
+    const record = getRecord(recordIndex);
+    if (!record) return Object.fromEntries([['service_code', ''], ...EDITABLE_FIELDS.map((f) => [f, ''])]);
+    const result = { service_code: record.source_service_code };
+    EDITABLE_FIELDS.forEach((f) => { result[f] = record[`source_${f}`] || ''; });
+    return result;
   }
   function getQA(index) { return qa[recordKey(index)] || {}; }
 
@@ -329,10 +344,32 @@ export default function QADashboard({ records }) {
     } catch (error) { setDatabaseStatus(`فشل الحفظ: ${error.message}`); }
   }
 
+  async function addServiceHandler() {
+    const name = newServiceName.trim();
+    if (!name) return;
+    try {
+      const payload = await postDatabaseAction({ action: 'add_service', service_name: name }, { applyState: true });
+      setShowAddModal(false);
+      setNewServiceName('');
+      const newIndex = (payload?.records || []).reduce((max, r) => Math.max(max, r.record_index), -1);
+      if (newIndex >= 0) setSelected(newIndex);
+      setToast(isArabic ? 'تمت إضافة الخدمة' : 'Service added');
+    } catch (error) { setDatabaseStatus(error.message); }
+  }
+
+  async function deleteServiceHandler(recordIndex) {
+    try {
+      const payload = await postDatabaseAction({ action: 'delete_service', record_index: recordIndex }, { applyState: true });
+      const remaining = (payload?.records || []).map((r) => r.record_index);
+      if (remaining.length) setSelected(remaining[0]);
+      setToast(isArabic ? 'تم حذف الخدمة' : 'Service deleted');
+    } catch (error) { setDatabaseStatus(error.message); }
+  }
+
   const stats = useMemo(() => {
     let validated = 0; let pending = 0;
-    currentRecords.forEach((_, index) => {
-      const status = getQA(index).status || 'pending';
+    currentRecords.forEach((r) => {
+      const status = getQA(r.record_index).status || 'pending';
       if (status === 'validated') validated += 1; else pending += 1;
     });
     return { validated, pending };
@@ -348,7 +385,7 @@ export default function QADashboard({ records }) {
   }, [currentRecords, directorateFilter]);
   const shown = useMemo(() => {
     const query = normalize(search).toLowerCase();
-    return currentRecords.map((_, i) => i).filter((index) => {
+    return currentRecords.map((r) => r.record_index).filter((index) => {
       const record = getRecord(index);
       const status = getQA(index).status || 'pending';
       const haystack = EDITABLE_FIELDS.map((f) => record[f] || '').join('\n');
@@ -363,6 +400,7 @@ export default function QADashboard({ records }) {
   useEffect(() => {
     setSaveErrors(new Set());
     setResetConfirm(false);
+    setDeleteConfirm(false);
   }, [selected]);
 
   useEffect(() => {
@@ -431,6 +469,12 @@ export default function QADashboard({ records }) {
           options={[{ value: 'all', label: t.allDepartments }, ...departments.map((d) => ({ value: d, label: d }))]} rtl={isArabic} />
       </div>
 
+      <div className="serviceBar">
+        <button className="btn addServiceBtn" onClick={() => { setShowAddModal(true); setNewServiceName(''); }}>
+          {t.addService}
+        </button>
+      </div>
+
       <section className="layout">
         <aside className="card">
           <div className="cardHead">
@@ -459,7 +503,7 @@ export default function QADashboard({ records }) {
               <h2 className={selectedRecord ? (isArabic ? 'ar' : 'autoText') : ''} dir={selectedRecord ? (isArabic ? 'rtl' : 'auto') : undefined}>
                 {selectedRecord ? selectedRecord.service_name : t.selectRecord}
               </h2>
-              <div className="muted">{selectedRecord ? t.recordOf(selected + 1, currentRecords.length) : ''}</div>
+              <div className="muted">{selectedRecord ? t.recordOf(currentRecords.findIndex((r) => r.record_index === selected) + 1, currentRecords.length) : ''}</div>
             </div>
             <span className={`pill ${statusClass(selectedStatus)}`}>{statusText(selectedStatus, t)}</span>
           </div>
@@ -498,12 +542,50 @@ export default function QADashboard({ records }) {
                       <button className="btn ghost" style={{ padding: '6px 14px', minHeight: 36 }} onClick={() => setResetConfirm(false)}>{t.confirmNo}</button>
                     </div>
                   )}
+                  <span style={{ flex: 1 }} />
+                  {!deleteConfirm && (
+                    <button className="btn danger" style={{ opacity: 0.75 }} onClick={() => setDeleteConfirm(true)}>{t.deleteService}</button>
+                  )}
+                  {deleteConfirm && (
+                    <div className="row" style={{ alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#ef4444' }}>{t.confirmDeleteMsg}</span>
+                      <button className="btn danger" style={{ padding: '6px 14px', minHeight: 36 }} onClick={() => { deleteServiceHandler(selected); setDeleteConfirm(false); }}>{t.confirmYes}</button>
+                      <button className="btn ghost" style={{ padding: '6px 14px', minHeight: 36 }} onClick={() => setDeleteConfirm(false)}>{t.confirmNo}</button>
+                    </div>
+                  )}
                 </div>
               </>
             ) : <div className="empty">{t.emptySelect}</div>}
           </div>
         </section>
       </section>
+
+      {showAddModal && (
+        <div className="serviceModalOverlay" onClick={() => setShowAddModal(false)}>
+          <div className="serviceModal" onClick={(e) => e.stopPropagation()}>
+            <div className="serviceModalHead">
+              <span>{t.addServiceTitle}</span>
+              <button className="adminClose" onClick={() => setShowAddModal(false)}>✕</button>
+            </div>
+            <div className="serviceModalBody">
+              <label className="serviceModalLabel">{t.serviceNameLabel}</label>
+              <input
+                className="serviceModalInput"
+                dir={isArabic ? 'rtl' : 'ltr'}
+                autoFocus
+                value={newServiceName}
+                onChange={(e) => setNewServiceName(e.target.value)}
+                placeholder={t.serviceNamePlaceholder}
+                onKeyDown={(e) => { if (e.key === 'Enter' && newServiceName.trim()) addServiceHandler(); }}
+              />
+              <div className="serviceModalActions">
+                <button className="btn ghost" onClick={() => setShowAddModal(false)}>{t.confirmNo}</button>
+                <button className="btn ok" onClick={addServiceHandler} disabled={!newServiceName.trim()}>{t.addBtn}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showLogin && (
         <div className="loginOverlay" onClick={() => { setShowLogin(false); setLoginError(''); setLoginForm({ username: '', password: '' }); }}>
