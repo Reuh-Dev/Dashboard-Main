@@ -52,9 +52,12 @@ h3 { margin: 0 0 10px; color: var(--muted); font-size: 11px; text-transform: upp
 }
 .btn:hover { border-color: #cfcfcf; background: #fbfbfb; }
 .btn.primary { background: var(--dark); border-color: var(--dark); color: #fff; }
-.btn.ok { color: var(--ok); }
+.btn.ok { color: #fff; background: #16a34a; border-color: #16a34a; font-weight: 600; }
+.btn.ok:hover { background: #15803d; border-color: #15803d; }
 .btn.no { color: var(--no); }
 .btn.ghost { color: var(--muted); }
+.btn.danger { color: #fff; background: #ef4444; border-color: #ef4444; font-weight: 600; }
+.btn.danger:hover { background: #dc2626; border-color: #dc2626; }
 input, select, textarea {
   width: 100%;
   border: 1px solid var(--line);
@@ -67,11 +70,11 @@ input, select, textarea {
 textarea { min-height: 200px; resize: vertical; line-height: 1.8; color: #374151; }
 input:focus, select:focus, textarea:focus { border-color: #aaa; box-shadow: 0 0 0 3px rgba(0,0,0,.05); }
 .stats { margin: 16px 0; }
-.progressCard { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 20px; }
+.progressCard { background: #eff6ff; border: 1px solid #bfdbfe; border-left: 5px solid #2563eb; border-radius: var(--radius); padding: 16px 20px; }
 .progressHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.progressPct { font-weight: 700; font-size: 16px; }
-.progressTrack { height: 8px; background: var(--soft); border-radius: 999px; overflow: hidden; margin-bottom: 12px; }
-.progressFill { height: 100%; background: var(--ok); border-radius: 999px; min-width: 0; transition: width .5s ease; }
+.progressPct { font-weight: 800; font-size: 18px; color: #1d4ed8; }
+.progressTrack { height: 10px; background: #bfdbfe; border-radius: 999px; overflow: hidden; margin-bottom: 12px; }
+.progressFill { height: 100%; background: #2563eb; border-radius: 999px; min-width: 0; transition: width .5s ease; }
 .progressPills { flex-wrap: wrap; gap: 6px; }
 .toolbar { display: grid; grid-template-columns: 1fr repeat(3, 200px); gap: 10px; margin-bottom: 28px; padding-bottom: 24px; border-bottom: 1px solid var(--line); align-items: center; }
 .searchWrap { position: relative; display: flex; align-items: center; min-width: 0; }
@@ -150,7 +153,9 @@ input:focus, select:focus, textarea:focus { border-color: #aaa; box-shadow: 0 0 
 .layout { display: grid; grid-template-columns: 480px minmax(0, 1fr); gap: 18px; align-items: start; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 .cardHead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--line); }
-aside.card .cardHead { background: #eef2ff; border-bottom-color: #c7d2fe; }
+aside.card .cardHead { background: #1e40af; border-bottom-color: #1e3a8a; }
+aside.card .cardHead h2 { color: #fff; }
+aside.card .cardHead .pill { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.3); color: #fff; }
 .cardBody { padding: 20px; }
 .list { max-height: calc(100vh - 280px); overflow-y: auto; background: #eef2ff; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .item { width: 100%; border: 1px solid #e0e7ff; border-radius: 12px; background: #fff; padding: 14px 18px; text-align: left; display: grid; grid-template-columns: 1fr auto; gap: 12px; cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s; box-shadow: 0 1px 3px rgba(99,102,241,.06); }
@@ -191,8 +196,9 @@ aside.card .cardHead { background: #eef2ff; border-bottom-color: #c7d2fe; }
 .toggleBtn { border: 0; border-radius: 999px; background: transparent; color: #4f46e5; cursor: pointer; font-weight: 700; min-height: 34px; padding: 0 12px; }
 .toggleBtn.active { background: #4f46e5; color: #fff; }
 
-.layout > aside.card { border-color: #c7d2fe; background: #eef2ff; }
-.layout > section.card { border-color: var(--line); }
+.layout > aside.card { border-color: #1e40af; background: #eef2ff; }
+.layout > section.card { border-color: #bfdbfe; }
+.layout > section.card .cardHead h2 { color: #1d4ed8; font-weight: 700; }
 
 .editableBox { --accent: var(--accent-slate); border: 2px solid var(--accent); border-inline-start-width: 8px; }
 

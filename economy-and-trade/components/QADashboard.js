@@ -42,6 +42,9 @@ const COPY = {
     fieldRequired: 'هذا الحقل مطلوب',
     resetAllQA: 'إعادة تعيين جميع المحفوظات إلى قيد المراجعة',
     resetRecordEdits: 'إلغاء تعديلات السجل',
+    confirmResetMsg: 'هل أنت متأكد من إلغاء التعديلات؟',
+    confirmYes: 'نعم',
+    confirmNo: 'إلغاء',
     emptySelect: 'اختر سجلاً للبدء بالتدقيق.',
     allDirectorates: 'كل المديريات',
     allSubDirectorates: 'كل المديريات الفرعية',
@@ -66,6 +69,9 @@ const COPY = {
     fieldRequired: 'This field is required',
     resetAllQA: 'Reset all saved back to pending',
     resetRecordEdits: 'Reset record edits',
+    confirmResetMsg: 'Are you sure you want to reset edits?',
+    confirmYes: 'Yes',
+    confirmNo: 'Cancel',
     emptySelect: 'Select a record to begin QA.',
     allDirectorates: 'All directorates',
     allSubDirectorates: 'All sub-directorates',
@@ -160,6 +166,7 @@ export default function QADashboard({ records }) {
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [loginError, setLoginError] = useState('');
   const [saveErrors, setSaveErrors] = useState(new Set());
+  const [resetConfirm, setResetConfirm] = useState(false);
   const saveTimers = useRef({});
 
   const isArabic = uiLanguage === 'ar';
@@ -361,6 +368,7 @@ export default function QADashboard({ records }) {
 
   useEffect(() => {
     setSaveErrors(new Set());
+    setResetConfirm(false);
   }, [selected]);
 
   useEffect(() => {
@@ -472,7 +480,16 @@ export default function QADashboard({ records }) {
                 <div className="sep" />
                 <div className="row">
                   <button className="btn ok" onClick={() => markValidated(selected)}>{t.save}</button>
-                  {selectedEdited ? <button className="btn ghost" onClick={() => resetRecordEdits(selected)}>{t.resetRecordEdits}</button> : null}
+                  {selectedEdited && !resetConfirm && (
+                    <button className="btn danger" onClick={() => setResetConfirm(true)}>{t.resetRecordEdits}</button>
+                  )}
+                  {selectedEdited && resetConfirm && (
+                    <div className="row" style={{ alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#ef4444' }}>{t.confirmResetMsg}</span>
+                      <button className="btn danger" style={{ padding: '6px 14px', minHeight: 36 }} onClick={() => { resetRecordEdits(selected); setResetConfirm(false); }}>{t.confirmYes}</button>
+                      <button className="btn ghost" style={{ padding: '6px 14px', minHeight: 36 }} onClick={() => setResetConfirm(false)}>{t.confirmNo}</button>
+                    </div>
+                  )}
                 </div>
               </>
             ) : <div className="empty">{t.emptySelect}</div>}
