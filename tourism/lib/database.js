@@ -3,6 +3,7 @@ import sourceData from '@/data/tou_required_ducuments.json';
 
 const EDITABLE_FIELDS = ['service_name', 'directorate', 'sub_directorate', 'required_documents', 'fees', 'notes'];
 const SOURCE_FILE = 'tou_services.json';
+const MINISTRY_KEY = 'tourism';
 
 let sqlConnection;
 let initPromise;
@@ -40,7 +41,8 @@ async function migrate(db) {
   await db`
     CREATE TABLE IF NOT EXISTS services (
       id SERIAL PRIMARY KEY,
-      record_index INTEGER NOT NULL UNIQUE,
+      record_index INTEGER NOT NULL,
+      ministry TEXT NOT NULL DEFAULT '',
       source_filename TEXT NOT NULL DEFAULT '',
       filename TEXT NOT NULL DEFAULT '',
       source_service_code TEXT NOT NULL DEFAULT '',
@@ -63,6 +65,7 @@ async function migrate(db) {
   `;
 
   const cols = [
+    ['ministry', "TEXT NOT NULL DEFAULT ''"],
     ['source_filename', "TEXT NOT NULL DEFAULT ''"],
     ['filename', "TEXT NOT NULL DEFAULT ''"],
     ['source_service_code', "TEXT NOT NULL DEFAULT ''"],
@@ -79,6 +82,13 @@ async function migrate(db) {
   for (const [col, def] of cols) {
     await db.unsafe(`ALTER TABLE services ADD COLUMN IF NOT EXISTS ${col} ${def}`);
   }
+
+  // Migrate existing rows that have no ministry set
+  await db`UPDATE services SET ministry = ${MINISTRY_KEY} WHERE ministry = ''`;
+
+  // Drop old single-column unique constraint and replace with composite
+  await db.unsafe(`ALTER TABLE services DROP CONSTRAINT IF EXISTS services_record_index_key`);
+  await db`CREATE UNIQUE INDEX IF NOT EXISTS idx_services_ministry_record_index ON services(ministry, record_index)`;
 
   await db`
     CREATE TABLE IF NOT EXISTS qa_reviews (
@@ -103,7 +113,6 @@ async function migrate(db) {
     )
   `;
 
-  await db`CREATE INDEX IF NOT EXISTS idx_services_record_index ON services(record_index)`;
   await db`CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at DESC)`;
 }
 
@@ -115,7 +124,7 @@ async function seed(db) {
     for (const [index, record] of records.entries()) {
       await tx`
         INSERT INTO services (
-          record_index, source_filename, filename,
+          record_index, ministry, source_filename, filename,
           source_service_code, service_code,
           source_service_name, service_name,
           source_directorate, directorate,
@@ -125,7 +134,7 @@ async function seed(db) {
           source_notes, notes,
           created_at, updated_at
         ) VALUES (
-          ${index}, ${SOURCE_FILE}, ${SOURCE_FILE},
+          ${index}, ${MINISTRY_KEY}, ${SOURCE_FILE}, ${SOURCE_FILE},
           ${record.service_code}, ${record.service_code},
           ${record.service_name}, ${record.service_name},
           ${record.directorate}, ${record.directorate},
@@ -135,7 +144,7 @@ async function seed(db) {
           ${record.notes}, ${record.notes},
           ${insertedAt}, ${insertedAt}
         )
-        ON CONFLICT (record_index) DO UPDATE SET
+        ON CONFLICT (ministry, record_index) DO UPDATE SET
           source_filename = EXCLUDED.source_filename,
           source_service_code = EXCLUDED.source_service_code,
           source_service_name = EXCLUDED.source_service_name,
@@ -172,6 +181,7 @@ function mapRow(row) {
   return {
     id: row.id,
     record_index: row.record_index,
+    ministry: row.ministry,
     source_service_code: row.source_service_code || '',
     service_code: row.service_code || '',
     source_service_name: row.source_service_name || '',
@@ -202,6 +212,7 @@ export async function getState() {
     SELECT s.*, q.status AS qa_status, q.corrected_required_documents, q.qa_note, q.updated_at AS qa_updated_at
     FROM services s
     LEFT JOIN qa_reviews q ON q.service_id = s.id
+    WHERE s.ministry = ${MINISTRY_KEY}
     ORDER BY s.record_index ASC
   `).map(mapRow);
 
@@ -221,7 +232,7 @@ export async function getState() {
 }
 
 async function getServiceByIndex(db, recordIndex) {
-  const [service] = await db`SELECT * FROM services WHERE record_index = ${recordIndex}`;
+  const [service] = await db`SELECT * FROM services WHERE ministry = ${MINISTRY_KEY} AND record_index = ${recordIndex}`;
   if (!service) throw new Error(`Record ${recordIndex + 1} was not found.`);
   return service;
 }
@@ -331,7 +342,7 @@ export async function resetAllQA() {
   await ensureDatabaseReady();
   const db = getSql();
   await db.begin(async (tx) => {
-    await tx`DELETE FROM qa_reviews`;
+    await tx`DELETE FROM qa_reviews WHERE service_id IN (SELECT id FROM services WHERE ministry = ${MINISTRY_KEY})`;
     await insertAudit(tx, null, 'reset_all_qa');
   });
   return getState();
@@ -345,7 +356,7 @@ export async function importRecords(correctedRecords) {
 
   await db.begin(async (tx) => {
     for (const [index, record] of correctedRecords.entries()) {
-      const [service] = await tx`SELECT * FROM services WHERE record_index = ${index}`;
+      const [service] = await tx`SELECT * FROM services WHERE ministry = ${MINISTRY_KEY} AND record_index = ${index}`;
       if (!service) continue;
       const patch = {};
       EDITABLE_FIELDS.forEach((field) => { if (typeof record?.[field] === 'string') patch[field] = record[field]; });
@@ -369,14 +380,14 @@ export async function importQA(qa) {
   const updatedAt = now();
 
   await db.begin(async (tx) => {
-    await tx`DELETE FROM qa_reviews`;
+    await tx`DELETE FROM qa_reviews WHERE service_id IN (SELECT id FROM services WHERE ministry = ${MINISTRY_KEY})`;
     for (const [key, value] of Object.entries(qa)) {
       const match = key.match(/^record-(\d+)$/);
       if (!match) continue;
       const recordIndex = Number(match[1]);
       if (!Number.isInteger(recordIndex) || recordIndex < 0) continue;
       if (!['validated', 'no'].includes(value?.status)) continue;
-      const [service] = await tx`SELECT id FROM services WHERE record_index = ${recordIndex}`;
+      const [service] = await tx`SELECT id FROM services WHERE ministry = ${MINISTRY_KEY} AND record_index = ${recordIndex}`;
       if (!service) continue;
       await tx`
         INSERT INTO qa_reviews (service_id, status, corrected_required_documents, qa_note, created_at, updated_at)
