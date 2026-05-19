@@ -1,5 +1,5 @@
 import postgres from 'postgres';
-import sourceData from '@/data/tou_required_ducuments.json';
+import sourceData from '@/data/tou_services.json';
 
 const EDITABLE_FIELDS = ['service_name', 'directorate', 'department', 'required_documents', 'fees', 'notes'];
 const SOURCE_FILE = 'tou_services.json';
