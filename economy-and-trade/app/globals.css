@@ -250,6 +250,7 @@ aside.card .cardHead .pill { background: rgba(255,255,255,.18); border-color: rg
 .layout > section.card .cardHead .pill { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.3); color: #fff; }
 .layout > section.card .cardHead .pill.ok { background: rgba(74,222,128,.25); border-color: rgba(74,222,128,.4); color: #86efac; }
 .layout > section.card .cardHead .pill.pending { background: rgba(251,191,36,.2); border-color: rgba(251,191,36,.35); color: #fde68a; }
+.layout > section.card .cardHead .pill.cancelled { background: rgba(239,68,68,.22); border-color: rgba(239,68,68,.4); color: #fca5a5; }
 
 .editableBox { --accent: var(--accent-slate); border: 2px solid var(--accent); border-inline-start-width: 8px; }
 

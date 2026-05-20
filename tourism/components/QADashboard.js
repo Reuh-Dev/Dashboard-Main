@@ -195,6 +195,7 @@ export default function QADashboard({ records }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newServiceName, setNewServiceName] = useState('');
   const [cancelTarget, setCancelTarget] = useState(null);
+  const [revertTarget, setRevertTarget] = useState(null);
   const [dbRecords, setDbRecords] = useState(initialRecords);
   const [qa, setQa] = useState({});
   const [, setDatabaseStatus] = useState('جارٍ تحميل قاعدة البيانات…');
@@ -596,7 +597,7 @@ export default function QADashboard({ records }) {
                         className="itemRevertBtn"
                         title="استعادة الخدمة"
                         aria-label="استعادة الخدمة"
-                        onClick={(e) => { e.stopPropagation(); revertServiceHandler(index); }}>
+                        onClick={(e) => { e.stopPropagation(); setRevertTarget(index); }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                           <polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 .49-3" />
                         </svg>
@@ -742,6 +743,26 @@ export default function QADashboard({ records }) {
               <div className="serviceModalActions">
                 <button className="btn ghost" onClick={() => setCancelTarget(null)}>{t.confirmNo}</button>
                 <button className="btn danger" onClick={() => { cancelServiceHandler(cancelTarget); setCancelTarget(null); }}>{t.confirmYes}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {revertTarget !== null && (
+        <div className="serviceModalOverlay" onClick={() => setRevertTarget(null)}>
+          <div className="serviceModal" onClick={(e) => e.stopPropagation()}>
+            <div className="serviceModalHead" style={{ background: '#16a34a' }}>
+              <span>استعادة الخدمة</span>
+              <button className="adminClose" onClick={() => setRevertTarget(null)}>✕</button>
+            </div>
+            <div className="serviceModalBody">
+              <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5 }} dir="rtl">
+                هل أنت متأكد أنك تريد استعادة الخدمة <strong>"{getRecord(revertTarget)?.service_name || ''}"</strong> وإعادتها إلى حالة نشطة؟
+              </p>
+              <div className="serviceModalActions">
+                <button className="btn ghost" onClick={() => setRevertTarget(null)}>{t.confirmNo}</button>
+                <button className="btn ok" onClick={() => { revertServiceHandler(revertTarget); setRevertTarget(null); }}>نعم، استعادة</button>
               </div>
             </div>
           </div>
