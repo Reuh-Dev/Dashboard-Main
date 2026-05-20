@@ -587,14 +587,7 @@ export default function QADashboard({ records }) {
 
         <section className="card">
           <div className="cardHead">
-            <div>
-              <h2 className={selectedRecord ? 'ar' : ''} dir={selectedRecord ? 'rtl' : undefined}>
-                {selectedRecord ? selectedRecord.service_name : t.selectRecord}
-              </h2>
-              <div className="muted">{selectedRecord ? t.recordOf(currentRecords.findIndex((r) => r.record_index === selected) + 1, currentRecords.length) : ''}</div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-              <span className={`pill ${statusClass(selectedStatus)}`}>{statusText(selectedStatus, t)}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
               {selectedRecord && (
                 <button className="trashBtn" title={t.removeService} onClick={() => setCancelTarget(selected)}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -602,7 +595,14 @@ export default function QADashboard({ records }) {
                   </svg>
                 </button>
               )}
+              <div style={{ minWidth: 0 }}>
+                <h2 className={selectedRecord ? 'ar' : ''} dir={selectedRecord ? 'rtl' : undefined}>
+                  {selectedRecord ? selectedRecord.service_name : t.selectRecord}
+                </h2>
+                <div className="muted">{selectedRecord ? t.recordOf(currentRecords.findIndex((r) => r.record_index === selected) + 1, currentRecords.length) : ''}</div>
+              </div>
             </div>
+            <span className={`pill ${statusClass(selectedStatus)}`}>{statusText(selectedStatus, t)}</span>
           </div>
 
           <div className="cardBody">
