@@ -30,7 +30,7 @@ const COPY = {
     exportCorrectedJSON: 'تصدير JSON المصحّح',
     pending: 'قيد المراجعة',
     searchPlaceholder: 'ابحث في الخدمات…',
-    allRecords: 'كل السجلات',
+    allRecords: 'كل الخدمات',
     saved: 'محفوظ',
     records: 'الخدمات',
     shown: 'ظاهر',
@@ -199,8 +199,6 @@ export default function QADashboard({ records }) {
   const [selected, setSelected] = useState(0);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
-  const [directorateFilter, setDirectorateFilter] = useState('all');
-  const [departmentFilter, setDepartmentFilter] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newServiceName, setNewServiceName] = useState('');
   const [cancelTarget, setCancelTarget] = useState(null);
@@ -488,14 +486,6 @@ export default function QADashboard({ records }) {
     return { validated, pending, cancelled };
   }, [qa, currentRecords]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const directorates = useMemo(() =>
-    [...new Set(currentRecords.map((r) => r.directorate).filter(Boolean))].sort(),
-    [currentRecords]
-  );
-  const departments = useMemo(() => {
-    const pool = directorateFilter === 'all' ? currentRecords : currentRecords.filter((r) => r.directorate === directorateFilter);
-    return [...new Set(pool.map((r) => r.department).filter(Boolean))].sort();
-  }, [currentRecords, directorateFilter]);
   const shown = useMemo(() => {
     const query = normalize(search).toLowerCase();
     return currentRecords.map((r) => r.record_index).filter((index) => {
@@ -504,11 +494,9 @@ export default function QADashboard({ records }) {
       const haystack = EDITABLE_FIELDS.map((f) => record[f] || '').join('\n');
       const matchesSearch = !query || normalize(haystack).toLowerCase().includes(query);
       const matchesFilter = filter === 'all' || status === filter;
-      const matchesDir = directorateFilter === 'all' || record.directorate === directorateFilter;
-      const matchesDept = departmentFilter === 'all' || record.department === departmentFilter;
-      return matchesSearch && matchesFilter && matchesDir && matchesDept;
+      return matchesSearch && matchesFilter;
     });
-  }, [currentRecords, search, filter, directorateFilter, departmentFilter, qa]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentRecords, search, filter, qa]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setSaveErrors(new Set());
@@ -571,10 +559,6 @@ export default function QADashboard({ records }) {
           { value: 'validated', label: t.saved },
           { value: 'cancelled', label: t.cancelled },
         ]} rtl={isArabic} />
-        <CustomSelect value={directorateFilter} onChange={(v) => { setDirectorateFilter(v); setDepartmentFilter('all'); }}
-          options={[{ value: 'all', label: t.allDirectorates }, ...directorates.map((d) => ({ value: d, label: d }))]} rtl={isArabic} />
-        <CustomSelect value={departmentFilter} onChange={setDepartmentFilter}
-          options={[{ value: 'all', label: t.allDepartments }, ...departments.map((d) => ({ value: d, label: d }))]} rtl={isArabic} />
       </div>
 
       <section className="layout">
@@ -619,7 +603,11 @@ export default function QADashboard({ records }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
               <span className={`pill ${statusClass(selectedStatus)}`}>{statusText(selectedStatus, t)}</span>
               {selectedRecord && (
-                <button className="btn danger" style={{ fontSize: 12, padding: '4px 12px', minHeight: 30 }} onClick={() => setCancelTarget(selected)}>{t.removeService}</button>
+                <button className="trashBtn" title={t.removeService} onClick={() => setCancelTarget(selected)}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
+                  </svg>
+                </button>
               )}
             </div>
           </div>
