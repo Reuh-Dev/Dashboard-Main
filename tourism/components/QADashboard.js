@@ -511,14 +511,7 @@ export default function QADashboard({ records }) {
               </h2>
               <div className="muted">{selectedRecord ? t.recordOf(currentRecords.findIndex((r) => r.record_index === selected) + 1, currentRecords.length) : ''}</div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-              <span className={`pill ${statusClass(selectedStatus)}`}>{statusText(selectedStatus, t)}</span>
-              {selectedRecord && (
-                <button className="btn removeServiceInlineBtn" onClick={() => setDeleteTarget(selected)}>
-                  {t.removeService}
-                </button>
-              )}
-            </div>
+            <span className={`pill ${statusClass(selectedStatus)}`}>{statusText(selectedStatus, t)}</span>
           </div>
 
           <div className="cardBody">
@@ -527,6 +520,7 @@ export default function QADashboard({ records }) {
                 <div className="sep" />
                 <div className="row" style={{ marginBottom: 4 }}>
                   <button className="btn ok" onClick={() => markValidated(selected)}>{t.save}</button>
+                  <button className="btn danger" onClick={() => setDeleteTarget(selected)}>{t.removeService}</button>
                 </div>
                 <div className="sep" />
                 {EDITABLE_FIELDS.map((field) => (
@@ -549,8 +543,9 @@ export default function QADashboard({ records }) {
                 <div className="sep" />
                 <div className="row">
                   <button className="btn ok" onClick={() => markValidated(selected)}>{t.save}</button>
+                  <button className="btn danger" onClick={() => setDeleteTarget(selected)}>{t.removeService}</button>
                   {selectedEdited && !resetConfirm && (
-                    <button className="btn danger" onClick={() => setResetConfirm(true)}>{t.resetRecordEdits}</button>
+                    <button className="btn ghost" onClick={() => setResetConfirm(true)}>{t.resetRecordEdits}</button>
                   )}
                   {selectedEdited && resetConfirm && (
                     <div className="row" style={{ alignItems: 'center', gap: 8 }}>
