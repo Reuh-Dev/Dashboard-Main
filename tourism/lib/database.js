@@ -97,6 +97,9 @@ async function migrate(db) {
   await db.unsafe(`ALTER TABLE services DROP CONSTRAINT IF EXISTS services_record_index_key`);
   await db`CREATE UNIQUE INDEX IF NOT EXISTS idx_services_ministry_record_index ON services(ministry, record_index)`;
 
+  // Fix reversed closing parenthesis in bowling service name
+  await db`UPDATE services SET service_name = replace(service_name, '(بناء قائم(', '(بناء قائم)'), source_service_name = replace(source_service_name, '(بناء قائم(', '(بناء قائم)') WHERE ministry = ${MINISTRY_KEY}`;
+
   await db`
     CREATE TABLE IF NOT EXISTS qa_reviews (
       service_id INTEGER PRIMARY KEY REFERENCES services(id) ON DELETE CASCADE,

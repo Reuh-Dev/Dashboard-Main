@@ -178,7 +178,6 @@ export default function QADashboard({ records }) {
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newServiceName, setNewServiceName] = useState('');
-  const [deleteMode, setDeleteMode] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [dbRecords, setDbRecords] = useState(initialRecords);
   const [qa, setQa] = useState({});
@@ -480,25 +479,14 @@ export default function QADashboard({ records }) {
           options={[{ value: 'all', label: t.allDepartments }, ...departments.map((d) => ({ value: d, label: d }))]} rtl={isArabic} />
       </div>
 
-      {deleteMode && <div className="deleteOverlay" onClick={() => setDeleteMode(false)} />}
-
       <section className="layout">
-        <div className={`recordsPanel${deleteMode ? ' elevate' : ''}`}>
+        <div className="recordsPanel">
           <div className="serviceBar">
             <button className="btn addServiceBtn" onClick={() => { setShowAddModal(true); setNewServiceName(''); }}>
               {t.addService}
             </button>
-            <button className="btn removeServiceBtn" onClick={() => setDeleteMode(true)}>
-              {t.removeService}
-            </button>
           </div>
           <aside className="card">
-            {deleteMode && (
-              <div className="deleteModeHeader">
-                <span>{t.selectToDelete}</span>
-                <button onClick={() => setDeleteMode(false)}>✕</button>
-              </div>
-            )}
             <div className="cardHead">
               <h2>{t.records}</h2>
               <span className="pill">{shown.length} {t.shown}</span>
@@ -509,8 +497,8 @@ export default function QADashboard({ records }) {
                 const status = getQA(index).status || 'pending';
                 return (
                   <button key={index}
-                    className={`item${deleteMode ? ' deleteHover' : (index === selected ? ' active' : '')}`}
-                    onClick={() => { if (deleteMode) { setDeleteTarget(index); } else { setSelected(index); } }}>
+                    className={`item${index === selected ? ' active' : ''}`}
+                    onClick={() => setSelected(index)}>
                     <span className={isArabic ? 'ar name' : 'autoText name'} dir={isArabic ? 'rtl' : 'auto'}>{record.service_name}</span>
                     <span className="row" style={{ justifyContent: 'flex-end' }}>
                       <span className={`pill ${statusClass(status)}`}>{statusText(status, t)}</span>
@@ -530,11 +518,22 @@ export default function QADashboard({ records }) {
               </h2>
               <div className="muted">{selectedRecord ? t.recordOf(currentRecords.findIndex((r) => r.record_index === selected) + 1, currentRecords.length) : ''}</div>
             </div>
-            <span className={`pill ${statusClass(selectedStatus)}`}>{statusText(selectedStatus, t)}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+              <span className={`pill ${statusClass(selectedStatus)}`}>{statusText(selectedStatus, t)}</span>
+              {selectedRecord && (
+                <button className="btn removeServiceInlineBtn" onClick={() => setDeleteTarget(selected)}>
+                  {t.removeService}
+                </button>
+              )}
+            </div>
           </div>
           <div className="cardBody">
             {selectedRecord ? (
               <>
+                <div className="sep" />
+                <div className="row" style={{ marginBottom: 4 }}>
+                  <button className="btn ok" onClick={() => markValidated(selected)}>{t.save}</button>
+                </div>
                 <div className="sep" />
                 {EDITABLE_FIELDS.map((field) => (
                   <EditableTextArea
@@ -613,7 +612,7 @@ export default function QADashboard({ records }) {
               </p>
               <div className="serviceModalActions">
                 <button className="btn ghost" onClick={() => setDeleteTarget(null)}>{t.confirmNo}</button>
-                <button className="btn danger" onClick={() => { deleteServiceHandler(deleteTarget); setDeleteTarget(null); setDeleteMode(false); }}>{t.confirmYes}</button>
+                <button className="btn danger" onClick={() => { deleteServiceHandler(deleteTarget); setDeleteTarget(null); }}>{t.confirmYes}</button>
               </div>
             </div>
           </div>

@@ -127,6 +127,16 @@ async function migrate(db) {
     await db`UPDATE services SET department = ${fixed}, source_department = ${fixed} WHERE ministry = ${MINISTRY_KEY} AND department = ${old}`;
   }
 
+  // Remove records that have no service name (junk/template entries from source data)
+  await db`DELETE FROM services WHERE ministry = ${MINISTRY_KEY} AND service_name = '' AND source_service_name = ''`;
+
+  // Remove the English Customs formalities entry
+  await db`DELETE FROM services WHERE ministry = ${MINISTRY_KEY} AND source_service_code = 'new - customs procedures'`;
+  await db`DELETE FROM services WHERE ministry = ${MINISTRY_KEY} AND service_name = 'Customs formalities'`;
+
+  // Fix reversed closing parenthesis in Kimberley service name
+  await db`UPDATE services SET service_name = replace(service_name, '(نظام كمبرلي(', '(نظام كمبرلي)'), source_service_name = replace(source_service_name, '(نظام كمبرلي(', '(نظام كمبرلي)') WHERE ministry = ${MINISTRY_KEY}`;
+
   await db`
     CREATE TABLE IF NOT EXISTS qa_reviews (
       service_id INTEGER PRIMARY KEY REFERENCES services(id) ON DELETE CASCADE,
