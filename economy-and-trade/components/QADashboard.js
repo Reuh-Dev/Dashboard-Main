@@ -50,14 +50,14 @@ const COPY = {
     allDirectorates: 'كل المديريات',
     allDepartments: 'كل الأقسام',
     addService: '+ إضافة خدمة',
-    removeService: 'حذف الخدمة',
+    removeService: 'إلغاء الخدمة',
     addServiceTitle: 'إضافة خدمة جديدة',
     serviceNameLabel: 'اسم الخدمة',
     serviceNamePlaceholder: 'أدخل اسم الخدمة…',
     addBtn: 'إضافة',
-    selectToDelete: 'اختر الخدمة المراد حذفها',
-    deleteService: 'حذف الخدمة',
-    confirmDeleteService: (name) => `هل أنت متأكد من حذف "${name}"؟`,
+    cancelService: 'إلغاء الخدمة',
+    confirmCancelService: (name) => `هل أنت متأكد من إلغاء "${name}"؟`,
+    cancelled: 'ملغى',
     attachForms: '📎 إرفاق المستندات',
     attachFormsHint: 'انقر لاختيار ملف PDF أو Word',
     attachedForms: 'النماذج المرفقة',
@@ -69,7 +69,7 @@ const COPY = {
     preparingDownload: 'جارٍ تحضير الملفات…',
     downloadComplete: 'اكتمل التنزيل',
     zipFilename: 'مرفقات_الاقتصاد_والتجارة.zip',
-    status: { validated: 'محفوظ', no: 'لا', pending: 'قيد المراجعة' }
+    status: { validated: 'محفوظ', no: 'لا', pending: 'قيد المراجعة', cancelled: 'ملغى' }
   },
   en: {
     switchToArabic: 'AR',
@@ -98,14 +98,14 @@ const COPY = {
     allDirectorates: 'All directorates',
     allDepartments: 'All departments',
     addService: '+ Add Service',
-    removeService: '- Remove Service',
+    removeService: 'Cancel Service',
     addServiceTitle: 'Add New Service',
     serviceNameLabel: 'Service Name',
     serviceNamePlaceholder: 'Enter service name…',
     addBtn: 'Add',
-    selectToDelete: 'Select a service to delete',
-    deleteService: 'Delete Service',
-    confirmDeleteService: (name) => `Are you sure you want to delete "${name}"?`,
+    cancelService: 'Cancel Service',
+    confirmCancelService: (name) => `Are you sure you want to cancel "${name}"?`,
+    cancelled: 'Cancelled',
     attachForms: '📎 Attach Documents',
     attachFormsHint: 'Click to select or drag & drop a PDF / Word file',
     attachedForms: 'Attached Forms',
@@ -117,7 +117,7 @@ const COPY = {
     preparingDownload: 'Preparing download…',
     downloadComplete: 'Download complete',
     zipFilename: 'economy_trade_attachments.zip',
-    status: { validated: 'Saved', no: 'No', pending: 'Pending' }
+    status: { validated: 'Saved', no: 'No', pending: 'Pending', cancelled: 'Cancelled' }
   }
 };
 
@@ -141,11 +141,13 @@ function recordKey(index) { return `record-${index}`; }
 function statusText(status, labels) {
   if (status === 'validated') return labels.status.validated;
   if (status === 'no') return labels.status.no;
+  if (status === 'cancelled') return labels.status.cancelled;
   return labels.status.pending;
 }
 function statusClass(status) {
   if (status === 'validated') return 'ok';
   if (status === 'no') return 'no';
+  if (status === 'cancelled') return 'cancelled';
   return 'pending';
 }
 
@@ -201,7 +203,7 @@ export default function QADashboard({ records }) {
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newServiceName, setNewServiceName] = useState('');
-  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [cancelTarget, setCancelTarget] = useState(null);
   const [dbRecords, setDbRecords] = useState(initialRecords);
   const [qa, setQa] = useState({});
   const [, setDatabaseStatus] = useState('جارٍ تحميل قاعدة البيانات…');
@@ -360,11 +362,13 @@ export default function QADashboard({ records }) {
   }
 
   function exportCorrectedJSON() {
-    const cleanRecords = currentRecords.map((r) => {
-      const result = { service_code: r.service_code };
-      EDITABLE_FIELDS.forEach((f) => { result[f] = r[f]; });
-      return result;
-    });
+    const cleanRecords = currentRecords
+      .filter((r) => (getQA(r.record_index).status || 'pending') !== 'cancelled')
+      .map((r) => {
+        const result = { service_code: r.service_code };
+        EDITABLE_FIELDS.forEach((f) => { result[f] = r[f]; });
+        return result;
+      });
     downloadBlob(JSON.stringify(cleanRecords, null, 2), 'etr_services_corrected.json', 'application/json;charset=utf-8');
   }
 
@@ -422,12 +426,14 @@ export default function QADashboard({ records }) {
     } catch (error) { setDatabaseStatus(error.message); }
   }
 
-  async function deleteServiceHandler(recordIndex) {
+  async function cancelServiceHandler(recordIndex) {
     try {
-      const payload = await postDatabaseAction({ action: 'delete_service', record_index: recordIndex }, { applyState: true });
-      const remaining = (payload?.records || []).map((r) => r.record_index);
-      if (remaining.length) setSelected(remaining[0]);
-      setToast(isArabic ? 'تم حذف الخدمة' : 'Service deleted');
+      setQa((current) => ({
+        ...current,
+        [recordKey(recordIndex)]: { ...(current[recordKey(recordIndex)] || {}), status: 'cancelled', corrected_required_documents: '', qa_note: '', updated_at: new Date().toISOString() }
+      }));
+      await postDatabaseAction({ action: 'save_qa', record_index: recordIndex, status: 'cancelled', corrected_required_documents: '', qa_note: '' });
+      setToast(isArabic ? 'تم إلغاء الخدمة' : 'Service cancelled');
     } catch (error) { setDatabaseStatus(error.message); }
   }
 
@@ -472,12 +478,14 @@ export default function QADashboard({ records }) {
   }
 
   const stats = useMemo(() => {
-    let validated = 0; let pending = 0;
+    let validated = 0; let pending = 0; let cancelled = 0;
     currentRecords.forEach((r) => {
       const status = getQA(r.record_index).status || 'pending';
-      if (status === 'validated') validated += 1; else pending += 1;
+      if (status === 'validated') validated += 1;
+      else if (status === 'cancelled') cancelled += 1;
+      else pending += 1;
     });
-    return { validated, pending };
+    return { validated, pending, cancelled };
   }, [qa, currentRecords]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const directorates = useMemo(() =>
@@ -516,7 +524,8 @@ export default function QADashboard({ records }) {
   const selectedState = selectedRecord ? getQA(selected) : {};
   const selectedStatus = selectedState.status || 'pending';
   const selectedEdited = selectedRecord ? recordHasDataEdit(selected) : false;
-  const pct = currentRecords.length ? Math.round((stats.validated / currentRecords.length) * 100) : 0;
+  const activeCount = currentRecords.length - stats.cancelled;
+  const pct = activeCount ? Math.round((stats.validated / activeCount) * 100) : 0;
 
   return (
     <main className={`wrap ${isArabic ? 'rtl' : 'ltr'}`} dir={isArabic ? 'rtl' : 'ltr'} lang={isArabic ? 'ar' : 'en'}>
@@ -560,6 +569,7 @@ export default function QADashboard({ records }) {
           { value: 'all', label: t.allRecords },
           { value: 'pending', label: t.pending },
           { value: 'validated', label: t.saved },
+          { value: 'cancelled', label: t.cancelled },
         ]} rtl={isArabic} />
         <CustomSelect value={directorateFilter} onChange={(v) => { setDirectorateFilter(v); setDepartmentFilter('all'); }}
           options={[{ value: 'all', label: t.allDirectorates }, ...directorates.map((d) => ({ value: d, label: d }))]} rtl={isArabic} />
@@ -609,7 +619,7 @@ export default function QADashboard({ records }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
               <span className={`pill ${statusClass(selectedStatus)}`}>{statusText(selectedStatus, t)}</span>
               {selectedRecord && (
-                <button className="btn danger" style={{ fontSize: 12, padding: '4px 12px', minHeight: 30 }} onClick={() => setDeleteTarget(selected)}>{t.removeService}</button>
+                <button className="btn danger" style={{ fontSize: 12, padding: '4px 12px', minHeight: 30 }} onClick={() => setCancelTarget(selected)}>{t.removeService}</button>
               )}
             </div>
           </div>
@@ -711,20 +721,20 @@ export default function QADashboard({ records }) {
         </div>
       )}
 
-      {deleteTarget !== null && (
-        <div className="serviceModalOverlay deleteConfirmModal" onClick={() => setDeleteTarget(null)}>
+      {cancelTarget !== null && (
+        <div className="serviceModalOverlay deleteConfirmModal" onClick={() => setCancelTarget(null)}>
           <div className="serviceModal" onClick={(e) => e.stopPropagation()}>
             <div className="serviceModalHead" style={{ background: '#ef4444' }}>
-              <span>{t.deleteService}</span>
-              <button className="adminClose" onClick={() => setDeleteTarget(null)}>✕</button>
+              <span>{t.cancelService}</span>
+              <button className="adminClose" onClick={() => setCancelTarget(null)}>✕</button>
             </div>
             <div className="serviceModalBody">
-              <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5 }} dir={isArabic ? 'rtl' : 'ltr'}>
-                {t.confirmDeleteService(getRecord(deleteTarget)?.service_name || '')}
+              <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5 }} dir="rtl">
+                {t.confirmCancelService(getRecord(cancelTarget)?.service_name || '')}
               </p>
               <div className="serviceModalActions">
-                <button className="btn ghost" onClick={() => setDeleteTarget(null)}>{t.confirmNo}</button>
-                <button className="btn danger" onClick={() => { deleteServiceHandler(deleteTarget); setDeleteTarget(null); }}>{t.confirmYes}</button>
+                <button className="btn ghost" onClick={() => setCancelTarget(null)}>{t.confirmNo}</button>
+                <button className="btn danger" onClick={() => { cancelServiceHandler(cancelTarget); setCancelTarget(null); }}>{t.confirmYes}</button>
               </div>
             </div>
           </div>

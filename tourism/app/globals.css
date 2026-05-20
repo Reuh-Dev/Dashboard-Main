@@ -199,6 +199,7 @@ aside.card .cardHead .pill { background: rgba(255,255,255,.18); border-color: rg
 .pill.ok { color: #166534; border-color: var(--line); background: #f0faf3; }
 .pill.pending { color: #92600a; border-color: var(--line); background: #fefce8; }
 .pill.no { color: var(--no); border-color: var(--line); background: #fff5f5; }
+.pill.cancelled { color: #991b1b; border-color: #fca5a5; background: #fee2e2; }
 .pill.flag { color: #b91c1c; border-color: var(--line); background: #fff1f2; }
 .pill.warn { color: var(--warn); border-color: var(--line); background: #fff9ed; }
 .pill.edited { color: #1d4ed8; border-color: var(--line); background: #eff6ff; }
