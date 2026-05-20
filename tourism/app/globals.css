@@ -195,8 +195,10 @@ aside.card .cardHead .pill { background: rgba(255,255,255,.18); border-color: rg
 .item { width: 100%; border: 1px solid #e0e7ff; border-radius: 12px; background: #fff; padding: 14px 18px; text-align: left; display: grid; grid-template-columns: 1fr auto auto; gap: 12px; cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s; box-shadow: 0 1px 3px rgba(99,102,241,.06); align-items: center; }
 .item:hover { background: #f5f3ff; border-color: #a5b4fc; box-shadow: 0 2px 6px rgba(99,102,241,.12); }
 .item.active { background: #ede9fe; border-color: #6366f1; box-shadow: 0 2px 8px rgba(99,102,241,.18); }
-.itemTrashBtn { width: 28px; height: 28px; border-radius: 6px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #9ca3af; transition: background .15s, color .15s; flex-shrink: 0; }
-.itemTrashBtn:hover, .itemTrashBtn:focus-visible { background: #fee2e2; color: #ef4444; outline: none; }
+.itemTrashBtn { width: 28px; height: 28px; border-radius: 6px; background: #fef2f2; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #f87171; transition: background .15s, color .15s; flex-shrink: 0; }
+.itemTrashBtn:hover, .itemTrashBtn:focus-visible { background: #fee2e2; color: #dc2626; outline: none; }
+.itemRevertBtn { width: 28px; height: 28px; border-radius: 6px; background: #f0fdf4; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #4ade80; transition: background .15s, color .15s; flex-shrink: 0; }
+.itemRevertBtn:hover, .itemRevertBtn:focus-visible { background: #dcfce7; color: #16a34a; outline: none; }
 .name { font-weight: 650; }
 .ar { direction: rtl; text-align: right; white-space: pre-wrap; }
 .pill { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 4px 9px; background: #fff; color: var(--muted); font-size: 12px; white-space: nowrap; }

@@ -435,6 +435,18 @@ export default function QADashboard({ records }) {
     } catch (error) { setDatabaseStatus(error.message); }
   }
 
+  async function revertServiceHandler(recordIndex) {
+    try {
+      setQa((current) => {
+        const next = { ...current };
+        delete next[recordKey(recordIndex)];
+        return next;
+      });
+      await postDatabaseAction({ action: 'clear_qa', record_index: recordIndex });
+      setToast(isArabic ? 'تمت استعادة الخدمة' : 'Service restored');
+    } catch (error) { setDatabaseStatus(error.message); }
+  }
+
   async function processFiles(files) {
     if (!files.length || selected === null) return;
     const currentAttachments = getRecord(selected)?.attachments || [];
@@ -586,15 +598,27 @@ export default function QADashboard({ records }) {
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(index); } }}>
                     <span className={isArabic ? 'ar name' : 'autoText name'} dir={isArabic ? 'rtl' : 'auto'}>{record.service_name}</span>
                     <span className={`pill ${statusClass(status)}`}>{statusText(status, t)}</span>
-                    <button
-                      className="itemTrashBtn"
-                      title="حذف الخدمة"
-                      aria-label="حذف الخدمة"
-                      onClick={(e) => { e.stopPropagation(); setCancelTarget(index); }}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
-                      </svg>
-                    </button>
+                    {status === 'cancelled' ? (
+                      <button
+                        className="itemRevertBtn"
+                        title="استعادة الخدمة"
+                        aria-label="استعادة الخدمة"
+                        onClick={(e) => { e.stopPropagation(); revertServiceHandler(index); }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 .49-3" />
+                        </svg>
+                      </button>
+                    ) : (
+                      <button
+                        className="itemTrashBtn"
+                        title="إلغاء الخدمة"
+                        aria-label="إلغاء الخدمة"
+                        onClick={(e) => { e.stopPropagation(); setCancelTarget(index); }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 );
               }) : <div className="empty">{t.noMatchingRecords}</div>}
@@ -610,16 +634,7 @@ export default function QADashboard({ records }) {
               </h2>
               <div className="muted">{selectedRecord ? t.recordOf(currentRecords.findIndex((r) => r.record_index === selected) + 1, currentRecords.length) : ''}</div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-              <span className={`pill ${statusClass(selectedStatus)}`}>{statusText(selectedStatus, t)}</span>
-              {selectedRecord && (
-                <button className="trashBtn" title={t.removeService} onClick={() => setCancelTarget(selected)}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
-                  </svg>
-                </button>
-              )}
-            </div>
+            <span className={`pill ${statusClass(selectedStatus)}`}>{statusText(selectedStatus, t)}</span>
           </div>
           <div className="cardBody">
             {selectedRecord ? (
