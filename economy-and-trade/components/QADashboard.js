@@ -58,7 +58,7 @@ const COPY = {
     selectToDelete: 'اختر الخدمة المراد حذفها',
     deleteService: 'حذف الخدمة',
     confirmDeleteService: (name) => `هل أنت متأكد من حذف "${name}"؟`,
-    attachForms: '📎 إرفاق نماذج',
+    attachForms: '📎 إرفاق نماذج · اسحب وأفلت',
     attachedForms: 'النماذج المرفقة',
     fileTooLarge: (name) => `${name} يتجاوز الحد الأقصى (5MB)`,
     maxAttachments: 'الحد الأقصى 5 مرفقات لكل خدمة',
@@ -99,7 +99,7 @@ const COPY = {
     selectToDelete: 'Select a service to delete',
     deleteService: 'Delete Service',
     confirmDeleteService: (name) => `Are you sure you want to delete "${name}"?`,
-    attachForms: '📎 Attach Forms',
+    attachForms: '📎 Attach Forms  ·  drag & drop',
     attachedForms: 'Attached Forms',
     fileTooLarge: (name) => `${name} exceeds 5MB limit`,
     maxAttachments: 'Maximum 5 attachments per service',
@@ -199,6 +199,7 @@ export default function QADashboard({ records }) {
   const [loginError, setLoginError] = useState('');
   const [saveErrors, setSaveErrors] = useState(new Set());
   const [resetConfirm, setResetConfirm] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const saveTimers = useRef({});
 
   const isArabic = uiLanguage === 'ar';
@@ -386,9 +387,7 @@ export default function QADashboard({ records }) {
     } catch (error) { setDatabaseStatus(error.message); }
   }
 
-  async function handleAttachFiles(e) {
-    const files = Array.from(e.target.files || []);
-    e.target.value = '';
+  async function processFiles(files) {
     if (!files.length || selected === null) return;
     const currentAttachments = getRecord(selected)?.attachments || [];
     const MAX_SIZE = 5 * 1024 * 1024;
@@ -401,6 +400,12 @@ export default function QADashboard({ records }) {
         setToast(isArabic ? 'تم إرفاق الملف' : 'File attached');
       } catch (err) { setDatabaseStatus(err.message); }
     }
+  }
+
+  async function handleAttachFiles(e) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    await processFiles(files);
   }
 
   async function removeAttachmentHandler(attachmentId) {
@@ -589,7 +594,12 @@ export default function QADashboard({ records }) {
                   />
                 ))}
                 <div className="sep" />
-                <div className="attachmentsSection">
+                <div
+                  className={`attachmentsSection${dragOver ? ' dragOver' : ''}`}
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false); }}
+                  onDrop={(e) => { e.preventDefault(); setDragOver(false); processFiles(Array.from(e.dataTransfer.files)); }}
+                >
                   {(selectedRecord?.attachments?.length > 0) && (
                     <div className="attachmentsList">
                       <h3 style={{ marginBottom: 8 }}>{t.attachedForms}</h3>
