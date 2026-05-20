@@ -460,7 +460,7 @@ aside.card .cardHead .pill { background: rgba(255,255,255,.18); border-color: rg
   background: #fff;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  width: 240px;
+  width: 280px;
   box-shadow: 0 8px 32px rgba(0,0,0,.12);
 }
 .adminHead {

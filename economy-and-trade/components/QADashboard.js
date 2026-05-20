@@ -755,13 +755,13 @@ export default function QADashboard({ records }) {
               <button className="adminClose" onClick={() => setShowAdmin(false)}>✕</button>
             </div>
             <div className="adminBody">
-              <button className="btn primary" style={{ width: '100%' }} onClick={() => { exportCorrectedJSON(); setShowAdmin(false); }}>
+              <button className="btn ghost" style={{ width: '100%', color: '#151515', borderColor: '#d1d5db', fontWeight: 600 }} onClick={() => { exportCorrectedJSON(); setShowAdmin(false); }}>
                 {isArabic ? 'تصدير JSON المصحّح' : 'Export corrected JSON'}
               </button>
               <button className="btn ghost" style={{ width: '100%', color: '#2563eb', borderColor: '#2563eb' }} onClick={async () => { setShowAdmin(false); await downloadAllAttachments(); }}>
                 {t.downloadAllAttachments}
               </button>
-              <div style={{ height: 10 }} />
+              <div className="sep" style={{ margin: '4px 0' }} />
               <button className="btn ghost" style={{ width: '100%', color: '#ef4444', borderColor: '#ef4444' }} onClick={async () => {
                 if (!window.confirm(isArabic ? 'هل أنت متأكد؟ سيتم إعادة تعيين جميع المحفوظات إلى قيد المراجعة.' : 'Are you sure? All saved records will be reset to pending.')) return;
                 try { await postDatabaseAction({ action: 'reset_all_qa' }, { applyState: true }); setShowAdmin(false); setToast(isArabic ? 'تمت إعادة التعيين' : 'Reset complete'); } catch (e) { setDatabaseStatus(e.message); }
