@@ -51,6 +51,10 @@ const COPY = {
     selectToDelete: 'اختر الخدمة المراد حذفها',
     deleteService: 'حذف الخدمة',
     confirmDeleteService: (name) => `هل أنت متأكد من حذف "${name}"؟`,
+    attachForms: '📎 إرفاق نماذج',
+    attachedForms: 'النماذج المرفقة',
+    fileTooLarge: (name) => `${name} يتجاوز الحد الأقصى (5MB)`,
+    maxAttachments: 'الحد الأقصى 5 مرفقات لكل خدمة',
     status: { validated: 'محفوظ', no: 'لا', pending: 'قيد المراجعة' }
   },
   en: {
@@ -88,6 +92,10 @@ const COPY = {
     selectToDelete: 'Select a service to delete',
     deleteService: 'Delete Service',
     confirmDeleteService: (name) => `Are you sure you want to delete "${name}"?`,
+    attachForms: '📎 Attach Forms',
+    attachedForms: 'Attached Forms',
+    fileTooLarge: (name) => `${name} exceeds 5MB limit`,
+    maxAttachments: 'Maximum 5 attachments per service',
     status: { validated: 'Saved', no: 'No', pending: 'Pending' }
   }
 };
@@ -149,6 +157,7 @@ function cleanDbRecord(record, fallbackIndex = 0) {
     result[`source_${f}`] = String(record?.[`source_${f}`] ?? record?.[f] ?? '');
     result[f] = String(record?.[f] || '');
   });
+  result.attachments = Array.isArray(record?.attachments) ? record.attachments : [];
   return result;
 }
 
@@ -370,6 +379,39 @@ export default function QADashboard({ records }) {
     } catch (error) { setDatabaseStatus(error.message); }
   }
 
+  async function handleAttachFiles(e) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length || selected === null) return;
+    const currentAttachments = getRecord(selected)?.attachments || [];
+    const MAX_SIZE = 5 * 1024 * 1024;
+    for (const file of files) {
+      if (currentAttachments.length >= 5) { setToast(t.maxAttachments); break; }
+      if (file.size > MAX_SIZE) { setToast(t.fileTooLarge(file.name)); continue; }
+      const data = await new Promise((resolve) => { const r = new FileReader(); r.onload = (ev) => resolve(ev.target.result); r.readAsDataURL(file); });
+      try {
+        await postDatabaseAction({ action: 'add_attachment', record_index: selected, attachment: { name: file.name, type: file.type, size: file.size, data } }, { applyState: true });
+        setToast(isArabic ? 'تم إرفاق الملف' : 'File attached');
+      } catch (err) { setDatabaseStatus(err.message); }
+    }
+  }
+
+  async function removeAttachmentHandler(attachmentId) {
+    try {
+      await postDatabaseAction({ action: 'delete_attachment', attachment_id: attachmentId }, { applyState: true });
+      setToast(isArabic ? 'تم حذف المرفق' : 'Attachment removed');
+    } catch (err) { setDatabaseStatus(err.message); }
+  }
+
+  async function downloadAttachment(attachmentId, filename) {
+    try {
+      const res = await fetch(`/api/database?attachment_id=${attachmentId}`);
+      const payload = await res.json();
+      if (!payload?.data) throw new Error('Download failed');
+      const a = document.createElement('a'); a.href = payload.data; a.download = filename; a.click();
+    } catch (err) { setToast(isArabic ? 'فشل التنزيل' : 'Download failed'); }
+  }
+
   const stats = useMemo(() => {
     let validated = 0; let pending = 0;
     currentRecords.forEach((r) => {
@@ -540,6 +582,26 @@ export default function QADashboard({ records }) {
                     hasError={saveErrors.has(field)}
                   />
                 ))}
+                <div className="sep" />
+                <div className="attachmentsSection">
+                  {(selectedRecord?.attachments?.length > 0) && (
+                    <div className="attachmentsList">
+                      <h3 style={{ marginBottom: 8 }}>{t.attachedForms}</h3>
+                      {selectedRecord.attachments.map((a) => (
+                        <div key={a.id} className="attachmentItem">
+                          <span className="attachmentIcon">📄</span>
+                          <button className="attachmentName" onClick={() => downloadAttachment(a.id, a.name)}>{a.name}</button>
+                          <span className="attachmentSize">{(a.size / 1024).toFixed(0)} KB</span>
+                          <button className="attachmentRemove" onClick={() => removeAttachmentHandler(a.id)}>✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <label className="btn attachBtn">
+                    {t.attachForms}
+                    <input type="file" hidden accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" multiple onChange={handleAttachFiles} />
+                  </label>
+                </div>
                 <div className="sep" />
                 <div className="row">
                   <button className="btn ok" onClick={() => markValidated(selected)}>{t.save}</button>

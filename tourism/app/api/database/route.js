@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { addService, clearQA, deleteService, getAuditLog, getState, importQA, importRecords, resetAllQA, resetRecordEdits, saveQA, updateRecord } from '@/lib/database';
+import { addAttachment, addService, clearQA, deleteAttachment, deleteService, getAttachmentData, getAuditLog, getState, importQA, importRecords, resetAllQA, resetRecordEdits, saveQA, updateRecord } from '@/lib/database';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,6 +13,9 @@ export async function GET(request) {
     const url = new URL(request.url);
     if (url.searchParams.get('audit') === '1') {
       return NextResponse.json({ ok: true, audit_log: await getAuditLog(url.searchParams.get('limit') || 200) });
+    }
+    if (url.searchParams.get('attachment_id')) {
+      return NextResponse.json(await getAttachmentData(url.searchParams.get('attachment_id')));
     }
     return NextResponse.json(await getState());
   } catch (error) {
@@ -47,6 +50,10 @@ export async function POST(request) {
       }
       case 'delete_service':
         return NextResponse.json(await deleteService(body.record_index));
+      case 'add_attachment':
+        return NextResponse.json(await addAttachment(body.record_index, body.attachment));
+      case 'delete_attachment':
+        return NextResponse.json(await deleteAttachment(body.attachment_id));
       default:
         return jsonError(new Error('Unknown database action.'), 400);
     }

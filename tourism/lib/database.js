@@ -124,6 +124,20 @@ async function migrate(db) {
   `;
 
   await db`CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at DESC)`;
+
+  await db`
+    CREATE TABLE IF NOT EXISTS service_attachments (
+      id SERIAL PRIMARY KEY,
+      service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+      ministry TEXT NOT NULL DEFAULT '',
+      name TEXT NOT NULL DEFAULT '',
+      file_type TEXT NOT NULL DEFAULT '',
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      data TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    )
+  `;
+  await db`CREATE INDEX IF NOT EXISTS idx_service_attachments_service_id ON service_attachments(service_id)`;
 }
 
 async function seed(db) {
@@ -210,7 +224,8 @@ function mapRow(row) {
     qa_status: row.qa_status || 'pending',
     corrected_required_documents: row.corrected_required_documents || '',
     qa_note: row.qa_note || '',
-    qa_updated_at: row.qa_updated_at || null
+    qa_updated_at: row.qa_updated_at || null,
+    attachments: Array.isArray(row.attachments) ? row.attachments : []
   };
 }
 
@@ -219,10 +234,16 @@ export async function getState() {
   const db = getSql();
 
   const rows = (await db`
-    SELECT s.*, q.status AS qa_status, q.corrected_required_documents, q.qa_note, q.updated_at AS qa_updated_at
+    SELECT s.*, q.status AS qa_status, q.corrected_required_documents, q.qa_note, q.updated_at AS qa_updated_at,
+      COALESCE(
+        json_agg(json_build_object('id', sa.id, 'name', sa.name, 'type', sa.file_type, 'size', sa.size_bytes, 'created_at', sa.created_at) ORDER BY sa.id ASC)
+        FILTER (WHERE sa.id IS NOT NULL), '[]'::json
+      ) AS attachments
     FROM services s
     LEFT JOIN qa_reviews q ON q.service_id = s.id
+    LEFT JOIN service_attachments sa ON sa.service_id = s.id
     WHERE s.ministry = ${MINISTRY_KEY}
+    GROUP BY s.id, q.status, q.corrected_required_documents, q.qa_note, q.updated_at
     ORDER BY s.record_index ASC
   `).map(mapRow);
 
@@ -453,6 +474,50 @@ export async function deleteService(recordIndex) {
     await tx`DELETE FROM services WHERE id = ${service.id}`;
   });
   return getState();
+}
+
+export async function addAttachment(recordIndex, attachment) {
+  if (!Number.isInteger(recordIndex) || recordIndex < 0) throw new Error('record_index must be a zero-based integer.');
+  const name = String(attachment?.name || '').slice(0, 200);
+  const fileType = String(attachment?.type || '');
+  const sizeBytes = Number(attachment?.size || 0);
+  const data = String(attachment?.data || '');
+  if (!name || !data) throw new Error('Attachment name and data are required.');
+
+  await ensureDatabaseReady();
+  const db = getSql();
+  await db.begin(async (tx) => {
+    const service = await getServiceByIndex(tx, recordIndex);
+    const [{ count }] = await tx`SELECT COUNT(*) AS count FROM service_attachments WHERE service_id = ${service.id}`;
+    if (Number(count) >= 5) throw new Error('Maximum 5 attachments per service.');
+    await tx`INSERT INTO service_attachments (service_id, ministry, name, file_type, size_bytes, data, created_at) VALUES (${service.id}, ${MINISTRY_KEY}, ${name}, ${fileType}, ${sizeBytes}, ${data}, ${now()})`;
+    await insertAudit(tx, service.id, 'add_attachment', 'attachments', null, name);
+  });
+  return getState();
+}
+
+export async function deleteAttachment(attachmentId) {
+  const id = Number(attachmentId);
+  if (!Number.isInteger(id) || id < 1) throw new Error('attachment_id must be a positive integer.');
+  await ensureDatabaseReady();
+  const db = getSql();
+  await db.begin(async (tx) => {
+    const [att] = await tx`SELECT sa.*, s.id AS sid FROM service_attachments sa JOIN services s ON s.id = sa.service_id WHERE sa.id = ${id} AND sa.ministry = ${MINISTRY_KEY}`;
+    if (!att) throw new Error('Attachment not found.');
+    await tx`DELETE FROM service_attachments WHERE id = ${id}`;
+    await insertAudit(tx, att.sid, 'delete_attachment', 'attachments', att.name, null);
+  });
+  return getState();
+}
+
+export async function getAttachmentData(attachmentId) {
+  const id = Number(attachmentId);
+  if (!Number.isInteger(id) || id < 1) throw new Error('attachment_id must be a positive integer.');
+  await ensureDatabaseReady();
+  const db = getSql();
+  const [att] = await db`SELECT data, name, file_type FROM service_attachments WHERE id = ${id} AND ministry = ${MINISTRY_KEY}`;
+  if (!att) throw new Error('Attachment not found.');
+  return { ok: true, data: att.data, name: att.name, type: att.file_type };
 }
 
 export async function getAuditLog(limit = 200) {
