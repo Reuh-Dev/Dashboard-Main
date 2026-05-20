@@ -57,6 +57,11 @@ const COPY = {
     fileTooLarge: (name) => `${name} يتجاوز الحد الأقصى (5MB)`,
     maxAttachments: 'الحد الأقصى 5 مرفقات لكل خدمة',
     invalidFileType: 'يُسمح فقط بملفات PDF وWord',
+    downloadAllAttachments: 'تنزيل جميع المرفقات',
+    noAttachments: 'لا توجد مرفقات في هذه الوزارة',
+    preparingDownload: 'جارٍ تحضير الملفات…',
+    downloadComplete: 'اكتمل التنزيل',
+    zipFilename: 'مرفقات_السياحة.zip',
     status: { validated: 'محفوظ', no: 'لا', pending: 'قيد المراجعة' }
   },
   en: {
@@ -100,6 +105,11 @@ const COPY = {
     fileTooLarge: (name) => `${name} exceeds 5MB limit`,
     maxAttachments: 'Maximum 5 attachments per service',
     invalidFileType: 'Only PDF and Word files are allowed',
+    downloadAllAttachments: 'Download All Attachments',
+    noAttachments: 'No attachments found for this ministry',
+    preparingDownload: 'Preparing download…',
+    downloadComplete: 'Download complete',
+    zipFilename: 'tourism_attachments.zip',
     status: { validated: 'Saved', no: 'No', pending: 'Pending' }
   }
 };
@@ -349,6 +359,36 @@ export default function QADashboard({ records }) {
       return result;
     });
     downloadBlob(JSON.stringify(cleanRecords, null, 2), 'tou_services_corrected.json', 'application/json;charset=utf-8');
+  }
+
+  async function downloadAllAttachments() {
+    const servicesWithAttachments = currentRecords.filter((r) => r.attachments?.length > 0);
+    if (!servicesWithAttachments.length) { setToast(t.noAttachments); return; }
+    setToast(t.preparingDownload);
+    try {
+      const { default: JSZip } = await import('jszip');
+      const zip = new JSZip();
+      for (const record of servicesWithAttachments) {
+        const folderName = `${String(record.record_index + 1).padStart(2, '0')} - ${record.service_name}`
+          .slice(0, 80).replace(/[/\\?%*:|"<>]/g, '-');
+        const folder = zip.folder(folderName);
+        for (const att of record.attachments) {
+          try {
+            const res = await fetch(`/api/database?attachment_id=${att.id}`);
+            const payload = await res.json();
+            if (!payload?.data) continue;
+            const base64 = payload.data.includes(',') ? payload.data.split(',')[1] : payload.data;
+            folder.file(att.name, base64, { base64: true });
+          } catch { /* skip failed file */ }
+        }
+      }
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = t.zipFilename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      setToast(t.downloadComplete);
+    } catch (err) { setToast(isArabic ? 'فشل التنزيل' : 'Download failed'); }
   }
 
   async function resetRecordEdits(index) {
@@ -711,6 +751,9 @@ export default function QADashboard({ records }) {
             <div className="adminBody">
               <button className="btn primary" style={{ width: '100%' }} onClick={() => { exportCorrectedJSON(); setShowAdmin(false); }}>
                 {isArabic ? 'تصدير JSON المصحّح' : 'Export corrected JSON'}
+              </button>
+              <button className="btn ghost" style={{ width: '100%', color: '#2563eb', borderColor: '#2563eb' }} onClick={async () => { setShowAdmin(false); await downloadAllAttachments(); }}>
+                {t.downloadAllAttachments}
               </button>
               <div style={{ height: 10 }} />
               <button className="btn ghost" style={{ width: '100%', color: '#ef4444', borderColor: '#ef4444' }} onClick={async () => {

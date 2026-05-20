@@ -12,11 +12,11 @@
     "node": ">=20.9.0"
   },
   "dependencies": {
+    "jszip": "^3.10.1",
     "next": "latest",
     "postgres": "^3.4.7",
     "react": "latest",
     "react-dom": "latest",
     "xlsx": "^0.18.5"
-  },
-  "devDependencies": {}
+  }
 }
