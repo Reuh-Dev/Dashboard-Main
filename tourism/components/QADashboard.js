@@ -19,13 +19,13 @@ const COPY = {
   ar: {
     switchToArabic: 'AR',
     switchToEnglish: 'EN',
-    title: 'لوحة تدقيق مستندات وزارة السياحة',
+    title: 'لوحة تدقيق خدمات وزارة السياحة',
     exportCorrectedJSON: 'تصدير JSON المصحّح',
     pending: 'قيد المراجعة',
     searchPlaceholder: 'ابحث في الخدمات…',
     allRecords: 'كل السجلات',
     saved: 'محفوظ',
-    records: 'السجلات',
+    records: 'الخدمات',
     shown: 'ظاهر',
     noMatchingRecords: 'لا توجد سجلات مطابقة.',
     selectRecord: 'اختر سجلاً',
@@ -43,7 +43,7 @@ const COPY = {
     allDirectorates: 'كل المديريات',
     allDepartments: 'كل الأقسام',
     addService: '+ إضافة خدمة',
-    removeService: '- حذف خدمة',
+    removeService: 'حذف الخدمة',
     addServiceTitle: 'إضافة خدمة جديدة',
     serviceNameLabel: 'اسم الخدمة',
     serviceNamePlaceholder: 'أدخل اسم الخدمة…',
@@ -202,7 +202,7 @@ export default function QADashboard({ records }) {
   const [saveErrors, setSaveErrors] = useState(new Set());
   const [resetConfirm, setResetConfirm] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [uiLanguage, setUiLanguage] = useState('ar');
+  const [uiLanguage] = useState('ar');
   const [showAdmin, setShowAdmin] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
@@ -515,12 +515,6 @@ export default function QADashboard({ records }) {
     <main className={`wrap ${isArabic ? 'rtl' : 'ltr'}`} dir={isArabic ? 'rtl' : 'ltr'} lang={isArabic ? 'ar' : 'en'}>
       <header className="header">
         <h1 className="ar">{t.title}</h1>
-        <div className="row headerActions">
-          <div className="languageToggle" aria-label="Language toggle">
-            <button type="button" className={`toggleBtn ${isArabic ? 'active' : ''}`} onClick={() => setUiLanguage('ar')}>{t.switchToArabic}</button>
-            <button type="button" className={`toggleBtn ${!isArabic ? 'active' : ''}`} onClick={() => setUiLanguage('en')}>{t.switchToEnglish}</button>
-          </div>
-        </div>
       </header>
 
       <section className="stats" aria-label="QA progress">
@@ -600,21 +594,25 @@ export default function QADashboard({ records }) {
         <section className="card">
           <div className="cardHead">
             <div>
-              <h2 className={selectedRecord ? (isArabic ? 'ar' : 'autoText') : ''} dir={selectedRecord ? (isArabic ? 'rtl' : 'auto') : undefined}>
+              <h2 className={selectedRecord ? 'ar' : ''} dir={selectedRecord ? 'rtl' : undefined}>
                 {selectedRecord ? selectedRecord.service_name : t.selectRecord}
               </h2>
               <div className="muted">{selectedRecord ? t.recordOf(currentRecords.findIndex((r) => r.record_index === selected) + 1, currentRecords.length) : ''}</div>
             </div>
-            <span className={`pill ${statusClass(selectedStatus)}`}>{statusText(selectedStatus, t)}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <span className={`pill ${statusClass(selectedStatus)}`}>{statusText(selectedStatus, t)}</span>
+              {selectedRecord && (
+                <button className="btn danger" style={{ fontSize: 12, padding: '4px 12px', minHeight: 30 }} onClick={() => setDeleteTarget(selected)}>{t.removeService}</button>
+              )}
+            </div>
           </div>
 
           <div className="cardBody">
             {selectedRecord ? (
               <>
                 <div className="sep" />
-                <div className="row" style={{ marginBottom: 4, justifyContent: 'space-between' }}>
+                <div className="row" style={{ marginBottom: 4 }}>
                   <button className="btn ok" onClick={() => markValidated(selected)}>{t.save}</button>
-                  <button className="btn danger" onClick={() => setDeleteTarget(selected)}>{t.removeService}</button>
                 </div>
                 <div className="sep" />
                 {EDITABLE_FIELDS.map((field) => (
