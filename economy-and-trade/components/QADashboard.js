@@ -578,14 +578,24 @@ export default function QADashboard({ records }) {
                 const record = getRecord(index);
                 const status = getQA(index).status || 'pending';
                 return (
-                  <button key={index}
+                  <div key={index}
+                    role="button"
+                    tabIndex={0}
                     className={`item${index === selected ? ' active' : ''}`}
-                    onClick={() => setSelected(index)}>
+                    onClick={() => setSelected(index)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(index); } }}>
                     <span className={isArabic ? 'ar name' : 'autoText name'} dir={isArabic ? 'rtl' : 'auto'}>{record.service_name}</span>
-                    <span className="row" style={{ justifyContent: 'flex-end' }}>
-                      <span className={`pill ${statusClass(status)}`}>{statusText(status, t)}</span>
-                    </span>
-                  </button>
+                    <span className={`pill ${statusClass(status)}`}>{statusText(status, t)}</span>
+                    <button
+                      className="itemTrashBtn"
+                      title="حذف الخدمة"
+                      aria-label="حذف الخدمة"
+                      onClick={(e) => { e.stopPropagation(); setCancelTarget(index); }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
+                      </svg>
+                    </button>
+                  </div>
                 );
               }) : <div className="empty">{t.noMatchingRecords}</div>}
             </div>
