@@ -51,10 +51,11 @@ const COPY = {
     selectToDelete: 'اختر الخدمة المراد حذفها',
     deleteService: 'حذف الخدمة',
     confirmDeleteService: (name) => `هل أنت متأكد من حذف "${name}"؟`,
-    attachForms: '📎 إرفاق نماذج · اسحب وأفلت',
+    attachForms: '📎 إرفاق PDF / Word · اسحب وأفلت',
     attachedForms: 'النماذج المرفقة',
     fileTooLarge: (name) => `${name} يتجاوز الحد الأقصى (5MB)`,
     maxAttachments: 'الحد الأقصى 5 مرفقات لكل خدمة',
+    invalidFileType: 'يُسمح فقط بملفات PDF وWord',
     status: { validated: 'محفوظ', no: 'لا', pending: 'قيد المراجعة' }
   },
   en: {
@@ -92,10 +93,11 @@ const COPY = {
     selectToDelete: 'Select a service to delete',
     deleteService: 'Delete Service',
     confirmDeleteService: (name) => `Are you sure you want to delete "${name}"?`,
-    attachForms: '📎 Attach Forms  ·  drag & drop',
+    attachForms: '📎 Attach PDF / Word  ·  drag & drop',
     attachedForms: 'Attached Forms',
     fileTooLarge: (name) => `${name} exceeds 5MB limit`,
     maxAttachments: 'Maximum 5 attachments per service',
+    invalidFileType: 'Only PDF and Word files are allowed',
     status: { validated: 'Saved', no: 'No', pending: 'Pending' }
   }
 };
@@ -384,7 +386,10 @@ export default function QADashboard({ records }) {
     if (!files.length || selected === null) return;
     const currentAttachments = getRecord(selected)?.attachments || [];
     const MAX_SIZE = 5 * 1024 * 1024;
+    const ALLOWED_EXTS = ['.pdf', '.doc', '.docx'];
     for (const file of files) {
+      const ext = '.' + file.name.split('.').pop().toLowerCase();
+      if (!ALLOWED_EXTS.includes(ext)) { setToast(t.invalidFileType); continue; }
       if (currentAttachments.length >= 5) { setToast(t.maxAttachments); break; }
       if (file.size > MAX_SIZE) { setToast(t.fileTooLarge(file.name)); continue; }
       const data = await new Promise((resolve) => { const r = new FileReader(); r.onload = (ev) => resolve(ev.target.result); r.readAsDataURL(file); });
@@ -609,7 +614,7 @@ export default function QADashboard({ records }) {
                   )}
                   <label className="btn attachBtn">
                     {t.attachForms}
-                    <input type="file" hidden accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" multiple onChange={handleAttachFiles} />
+                    <input type="file" hidden accept=".pdf,.doc,.docx" multiple onChange={handleAttachFiles} />
                   </label>
                 </div>
                 <div className="sep" />
