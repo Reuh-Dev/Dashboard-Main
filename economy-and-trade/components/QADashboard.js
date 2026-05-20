@@ -524,7 +524,7 @@ export default function QADashboard({ records }) {
             {selectedRecord ? (
               <>
                 <div className="sep" />
-                <div className="row" style={{ marginBottom: 4 }}>
+                <div className="row" style={{ marginBottom: 4, justifyContent: 'space-between' }}>
                   <button className="btn ok" onClick={() => markValidated(selected)}>{t.save}</button>
                   <button className="btn danger" onClick={() => setDeleteTarget(selected)}>{t.removeService}</button>
                 </div>
@@ -549,14 +549,13 @@ export default function QADashboard({ records }) {
                 <div className="sep" />
                 <div className="row">
                   <button className="btn ok" onClick={() => markValidated(selected)}>{t.save}</button>
-                  <button className="btn danger" onClick={() => setDeleteTarget(selected)}>{t.removeService}</button>
                   {selectedEdited && !resetConfirm && (
-                    <button className="btn ghost" onClick={() => setResetConfirm(true)}>{t.resetRecordEdits}</button>
+                    <button className="btn warn" onClick={() => setResetConfirm(true)}>{t.resetRecordEdits}</button>
                   )}
                   {selectedEdited && resetConfirm && (
                     <div className="row" style={{ alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: '#ef4444' }}>{t.confirmResetMsg}</span>
-                      <button className="btn danger" style={{ padding: '6px 14px', minHeight: 36 }} onClick={() => { resetRecordEdits(selected); setResetConfirm(false); }}>{t.confirmYes}</button>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#92400e' }}>{t.confirmResetMsg}</span>
+                      <button className="btn warn" style={{ padding: '6px 14px', minHeight: 36 }} onClick={() => { resetRecordEdits(selected); setResetConfirm(false); }}>{t.confirmYes}</button>
                       <button className="btn ghost" style={{ padding: '6px 14px', minHeight: 36 }} onClick={() => setResetConfirm(false)}>{t.confirmNo}</button>
                     </div>
                   )}
