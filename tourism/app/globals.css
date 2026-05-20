@@ -500,9 +500,11 @@ aside.card .cardHead .pill { background: rgba(255,255,255,.18); border-color: rg
 .attachmentSize { font-size: 12px; color: var(--muted); flex-shrink: 0; }
 .attachmentRemove { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 14px; padding: 2px 6px; border-radius: 6px; flex-shrink: 0; }
 .attachmentRemove:hover { background: #fee2e2; color: #ef4444; }
-.attachBtn { font-size: 13px; font-weight: 700; padding: 14px 16px; min-height: 54px; border: 2px dashed #86efac; width: 100%; justify-content: center; display: flex; align-items: center; cursor: pointer; background: #f0fdf4; color: #16a34a; border-radius: 12px; transition: background .15s, border-color .15s, box-shadow .15s; gap: 6px; }
+.attachBtn { font-size: 13px; font-weight: 700; padding: 14px 16px; min-height: 60px; border: 2px dashed #86efac; width: 100%; justify-content: center; display: flex; flex-direction: column; align-items: center; cursor: pointer; background: #f0fdf4; color: #16a34a; border-radius: 12px; transition: background .15s, border-color .15s, box-shadow .15s; gap: 3px; }
 .attachBtn:hover { background: #dcfce7; border-color: #16a34a; }
 .attachmentsSection.dragOver .attachBtn { background: #bbf7d0; border-color: #16a34a; box-shadow: 0 0 0 3px rgba(22,163,74,.18); }
+.attachBtnLabel { font-size: 13px; font-weight: 700; }
+.attachBtnHint { font-size: 11px; font-weight: 400; opacity: 0.65; }
 
 @media (max-width: 900px) {
   .wrap.rtl .layout,

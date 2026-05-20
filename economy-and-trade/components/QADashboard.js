@@ -58,7 +58,8 @@ const COPY = {
     selectToDelete: 'اختر الخدمة المراد حذفها',
     deleteService: 'حذف الخدمة',
     confirmDeleteService: (name) => `هل أنت متأكد من حذف "${name}"؟`,
-    attachForms: '📎 إرفاق PDF / Word · اسحب وأفلت',
+    attachForms: '📎 إرفاق المستندات',
+    attachFormsHint: 'انقر لاختيار ملف PDF أو Word',
     attachedForms: 'النماذج المرفقة',
     fileTooLarge: (name) => `${name} يتجاوز الحد الأقصى (5MB)`,
     maxAttachments: 'الحد الأقصى 5 مرفقات لكل خدمة',
@@ -100,7 +101,8 @@ const COPY = {
     selectToDelete: 'Select a service to delete',
     deleteService: 'Delete Service',
     confirmDeleteService: (name) => `Are you sure you want to delete "${name}"?`,
-    attachForms: '📎 Attach PDF / Word  ·  drag & drop',
+    attachForms: '📎 Attach Documents',
+    attachFormsHint: 'Click to select or drag & drop a PDF / Word file',
     attachedForms: 'Attached Forms',
     fileTooLarge: (name) => `${name} exceeds 5MB limit`,
     maxAttachments: 'Maximum 5 attachments per service',
@@ -619,7 +621,8 @@ export default function QADashboard({ records }) {
                     </div>
                   )}
                   <label className="btn attachBtn">
-                    {t.attachForms}
+                    <span className="attachBtnLabel">{t.attachForms}</span>
+                    <span className="attachBtnHint">{t.attachFormsHint}</span>
                     <input type="file" hidden accept=".pdf,.doc,.docx" multiple onChange={handleAttachFiles} />
                   </label>
                 </div>
