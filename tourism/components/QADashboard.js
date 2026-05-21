@@ -9,8 +9,8 @@ const OPTIONAL_FIELDS = new Set(['fees', 'notes']);
 const FIELD_META = {
   service_name:       { ar: { label: 'اسم الخدمة',          placeholder: 'أدخل اسم الخدمة…'          }, en: { label: 'Service Name',      placeholder: 'Enter service name…'      } },
   directorate:        { ar: { label: 'المديرية',             placeholder: 'أدخل المديرية…'             }, en: { label: 'Directorate',        placeholder: 'Enter directorate…'        } },
-  department:         { ar: { label: 'مصلحة',               placeholder: 'أدخل المصلحة…'              }, en: { label: 'Department',         placeholder: 'Enter department…'         } },
-  unit:               { ar: { label: 'دائرة',               placeholder: 'أدخل الدائرة…'              }, en: { label: 'Unit',               placeholder: 'Enter unit…'               } },
+  department:         { ar: { label: 'المصلحة',             placeholder: 'أدخل المصلحة…'              }, en: { label: 'Department',         placeholder: 'Enter department…'         } },
+  unit:               { ar: { label: 'الدائرة',             placeholder: 'أدخل الدائرة…'              }, en: { label: 'Unit',               placeholder: 'Enter unit…'               } },
   required_documents: { ar: { label: 'المستندات المطلوبة',   placeholder: 'أدخل المستندات المطلوبة…'   }, en: { label: 'Required Documents', placeholder: 'Enter required documents…' } },
   fees:               { ar: { label: 'الرسوم',               placeholder: 'أدخل الرسوم…'               }, en: { label: 'Fees',               placeholder: 'Enter fees…'               } },
   notes:              { ar: { label: 'ملاحظات',              placeholder: 'أدخل الملاحظات…'            }, en: { label: 'Notes',              placeholder: 'Enter notes…'              } },
@@ -746,7 +746,7 @@ export default function QADashboard({ records }) {
               </p>
               <div className="serviceModalActions">
                 <button className="btn ghost" onClick={() => setCancelTarget(null)}>لا</button>
-                <button className="btn danger" onClick={() => { cancelServiceHandler(cancelTarget); setCancelTarget(null); }}>نعم، تعليق</button>
+                <button className="btn danger" onClick={() => { cancelServiceHandler(cancelTarget); setCancelTarget(null); }}>نعم، إلغاء</button>
               </div>
             </div>
           </div>
