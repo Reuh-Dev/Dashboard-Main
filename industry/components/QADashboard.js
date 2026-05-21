@@ -521,7 +521,7 @@ export default function QADashboard({ records }) {
       const status = getQA(index).status || 'pending';
       const haystack = EDITABLE_FIELDS.map((f) => record[f] || '').join('\n');
       const matchesSearch = !query || normalize(haystack).toLowerCase().includes(query);
-      const matchesFilter = filter === 'all' || status === filter;
+      const matchesFilter = (filter === 'all' && status !== 'cancelled') || status === filter;
       return matchesSearch && matchesFilter;
     });
   }, [currentRecords, search, filter, qa]); // eslint-disable-line react-hooks/exhaustive-deps
