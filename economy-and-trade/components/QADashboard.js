@@ -200,6 +200,7 @@ export default function QADashboard({ records }) {
   const [cancelTarget, setCancelTarget] = useState(null);
   const [revertTarget, setRevertTarget] = useState(null);
   const [dbRecords, setDbRecords] = useState(initialRecords);
+  const [dbReady, setDbReady] = useState(false);
   const [qa, setQa] = useState({});
   const [, setDatabaseStatus] = useState('جارٍ تحميل قاعدة البيانات…');
   const [toast, setToast] = useState('');
@@ -221,6 +222,7 @@ export default function QADashboard({ records }) {
   function applyDatabaseState(payload) {
     if (Array.isArray(payload?.records)) setDbRecords(payload.records.map(cleanDbRecord));
     if (payload?.qa && typeof payload.qa === 'object' && !Array.isArray(payload.qa)) setQa(payload.qa);
+    setDbReady(true);
   }
 
   async function postDatabaseAction(body, options = {}) {
@@ -534,16 +536,16 @@ export default function QADashboard({ records }) {
         <div className="progressCard">
           <div className="progressMain">
             <div className="progressLeft">
-              <span className="progressPct">{pct}<span className="progressPctSymbol">%</span></span>
-              <span className="progressLabel">{stats.validated} من {activeCount} {t.complete}</span>
+              <span className="progressPct">{dbReady ? pct : '—'}<span className="progressPctSymbol">%</span></span>
+              <span className="progressLabel">{dbReady ? `${stats.validated} من ${activeCount} ${t.complete}` : '…'}</span>
             </div>
             <div className="progressRight">
               <div className="statChip ok">
-                <span className="statChipNum">{stats.validated}</span>
+                <span className="statChipNum">{dbReady ? stats.validated : '—'}</span>
                 <span className="statChipLabel">{t.saved}</span>
               </div>
               <div className="statChip pending">
-                <span className="statChipNum">{stats.pending}</span>
+                <span className="statChipNum">{dbReady ? stats.pending : '—'}</span>
                 <span className="statChipLabel">{t.pending}</span>
               </div>
             </div>
