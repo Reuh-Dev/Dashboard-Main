@@ -280,7 +280,7 @@ export default function QADashboard({ records }) {
 
   function handleAdminLogin(e) {
     e.preventDefault();
-    if (loginForm.username === 'admin' && loginForm.password === 'OMSAR@2025') {
+    if (loginForm.username === 'admin' && loginForm.password === 'OMSAR@2026') {
       setShowLogin(false); setShowAdmin(true);
       setLoginForm({ username: '', password: '' }); setLoginError('');
     } else { setLoginError('Invalid credentials.'); }
