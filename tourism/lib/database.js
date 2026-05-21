@@ -534,6 +534,71 @@ export async function getAttachmentData(attachmentId) {
   return { ok: true, data: att.data, name: att.name, type: att.file_type };
 }
 
+export async function uploadSourceJson(records) {
+  if (!Array.isArray(records)) throw new Error('records must be an array.');
+  await ensureDatabaseReady();
+  const db = getSql();
+  const insertedAt = now();
+  const normalized = records.map((r) => ({
+    service_code: clean(r?.service_code),
+    service_name: clean(r?.service_name),
+    directorate: clean(r?.directorate),
+    department: clean(r?.department || r?.sub_directorate),
+    unit: clean(r?.unit),
+    required_documents: clean(r?.required_documents),
+    fees: clean(r?.fees),
+    notes: clean(r?.notes)
+  }));
+  await db.begin(async (tx) => {
+    for (const [index, record] of normalized.entries()) {
+      await tx`
+        INSERT INTO services (
+          record_index, ministry, source_filename, filename,
+          source_service_code, service_code,
+          source_service_name, service_name,
+          source_directorate, directorate,
+          source_department, department,
+          source_unit, unit,
+          source_required_documents, required_documents,
+          source_fees, fees,
+          source_notes, notes,
+          created_at, updated_at
+        ) VALUES (
+          ${index}, ${MINISTRY_KEY}, ${SOURCE_FILE}, ${SOURCE_FILE},
+          ${record.service_code}, ${record.service_code},
+          ${record.service_name}, ${record.service_name},
+          ${record.directorate}, ${record.directorate},
+          ${record.department}, ${record.department},
+          ${record.unit}, ${record.unit},
+          ${record.required_documents}, ${record.required_documents},
+          ${record.fees}, ${record.fees},
+          ${record.notes}, ${record.notes},
+          ${insertedAt}, ${insertedAt}
+        )
+        ON CONFLICT (ministry, record_index) DO UPDATE SET
+          source_filename = EXCLUDED.source_filename,
+          source_service_code = EXCLUDED.source_service_code,
+          source_service_name = EXCLUDED.source_service_name,
+          service_name = CASE WHEN services.service_name = '' THEN EXCLUDED.service_name ELSE services.service_name END,
+          source_directorate = EXCLUDED.source_directorate,
+          directorate = CASE WHEN services.directorate = '' THEN EXCLUDED.directorate ELSE services.directorate END,
+          source_department = EXCLUDED.source_department,
+          department = CASE WHEN services.department = '' THEN EXCLUDED.department ELSE services.department END,
+          source_unit = EXCLUDED.source_unit,
+          unit = CASE WHEN services.unit = '' THEN EXCLUDED.unit ELSE services.unit END,
+          source_required_documents = EXCLUDED.source_required_documents,
+          required_documents = CASE WHEN services.required_documents = '' THEN EXCLUDED.required_documents ELSE services.required_documents END,
+          source_fees = EXCLUDED.source_fees,
+          fees = CASE WHEN services.fees = '' THEN EXCLUDED.fees ELSE services.fees END,
+          source_notes = EXCLUDED.source_notes,
+          notes = CASE WHEN services.notes = '' THEN EXCLUDED.notes ELSE services.notes END
+      `;
+    }
+    await insertAudit(tx, null, 'upload_source_json');
+  });
+  return getState();
+}
+
 export async function getAuditLog(limit = 200) {
   await ensureDatabaseReady();
   const db = getSql();

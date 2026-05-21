@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { addAttachment, addService, clearQA, deleteAttachment, deleteService, getAttachmentData, getAuditLog, getState, importQA, importRecords, resetAllQA, resetRecordEdits, saveQA, updateRecord } from '@/lib/database';
+import { addAttachment, addService, clearQA, deleteAttachment, deleteService, getAttachmentData, getAuditLog, getState, importQA, importRecords, resetAllQA, resetRecordEdits, saveQA, updateRecord, uploadSourceJson } from '@/lib/database';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -54,6 +54,9 @@ export async function POST(request) {
         return NextResponse.json(await addAttachment(body.record_index, body.attachment));
       case 'delete_attachment':
         return NextResponse.json(await deleteAttachment(body.attachment_id));
+      case 'upload_source_json':
+        if (!Array.isArray(body.records)) throw new Error('records must be an array.');
+        return NextResponse.json(await uploadSourceJson(body.records));
       default:
         return jsonError(new Error('Unknown database action.'), 400);
     }

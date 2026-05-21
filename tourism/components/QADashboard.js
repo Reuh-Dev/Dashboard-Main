@@ -446,6 +446,23 @@ export default function QADashboard({ records }) {
     } catch (error) { setDatabaseStatus(error.message); }
   }
 
+  async function uploadJsonHandler(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) throw new Error(isArabic ? 'الملف يجب أن يكون مصفوفة JSON' : 'File must be a JSON array.');
+      setShowAdmin(false);
+      setToast(isArabic ? 'جارٍ رفع البيانات…' : 'Uploading data…');
+      await postDatabaseAction({ action: 'upload_source_json', records: parsed }, { applyState: true });
+      setToast(isArabic ? 'تم رفع البيانات بنجاح' : 'Data uploaded successfully');
+    } catch (err) {
+      setToast(isArabic ? `فشل الرفع: ${err.message}` : `Upload failed: ${err.message}`);
+    }
+  }
+
   async function processFiles(files) {
     if (!files.length || selected === null) return;
     const currentAttachments = getRecord(selected)?.attachments || [];
@@ -803,6 +820,11 @@ export default function QADashboard({ records }) {
               <button className="btn ghost" style={{ width: '100%', color: '#2563eb', borderColor: '#2563eb' }} onClick={async () => { setShowAdmin(false); await downloadAllAttachments(); }}>
                 {t.downloadAllAttachments}
               </button>
+              <div className="sep" style={{ margin: '4px 0' }} />
+              <label className="btn ghost" style={{ width: '100%', color: '#7c3aed', borderColor: '#7c3aed', textAlign: 'center', cursor: 'pointer' }}>
+                {isArabic ? '📂 رفع ملف JSON' : '📂 Upload JSON File'}
+                <input type="file" hidden accept=".json" onChange={uploadJsonHandler} />
+              </label>
               <div className="sep" style={{ margin: '4px 0' }} />
               <button className="btn ghost" style={{ width: '100%', color: '#ef4444', borderColor: '#ef4444' }} onClick={async () => {
                 if (!window.confirm(isArabic ? 'هل أنت متأكد؟ سيتم إعادة تعيين جميع المحفوظات إلى قيد المراجعة.' : 'Are you sure? All saved records will be reset to pending.')) return;
