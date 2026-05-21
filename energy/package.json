@@ -1,0 +1,22 @@
+{
+  "name": "enr-qa-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "next": "latest",
+    "postgres": "^3.4.7",
+    "react": "latest",
+    "react-dom": "latest",
+    "xlsx": "^0.18.5"
+  }
+}

@@ -1,9 +1,9 @@
 import postgres from 'postgres';
-import sourceData from '@/data/tou_services.json';
+import sourceData from '@/data/soc_services.json';
 
 const EDITABLE_FIELDS = ['service_name', 'directorate', 'department', 'unit', 'required_documents', 'fees', 'notes'];
-const SOURCE_FILE = 'tou_services.json';
-const MINISTRY_KEY = 'tourism';
+const SOURCE_FILE = 'soc_services.json';
+const MINISTRY_KEY = 'social_affairs';
 
 let sqlConnection;
 let initPromise;
@@ -80,7 +80,6 @@ async function migrate(db) {
     ['source_unit', "TEXT NOT NULL DEFAULT ''"],
     ['unit', "TEXT NOT NULL DEFAULT ''"],
     ['source_fees', "TEXT NOT NULL DEFAULT ''"],
-
     ['fees', "TEXT NOT NULL DEFAULT ''"],
     ['source_notes', "TEXT NOT NULL DEFAULT ''"],
     ['notes', "TEXT NOT NULL DEFAULT ''"]
@@ -99,9 +98,6 @@ async function migrate(db) {
   // Drop old single-column unique constraint and replace with composite
   await db.unsafe(`ALTER TABLE services DROP CONSTRAINT IF EXISTS services_record_index_key`);
   await db`CREATE UNIQUE INDEX IF NOT EXISTS idx_services_ministry_record_index ON services(ministry, record_index)`;
-
-  // Fix reversed closing parenthesis in bowling service name
-  await db`UPDATE services SET service_name = replace(service_name, '(بناء قائم(', '(بناء قائم)'), source_service_name = replace(source_service_name, '(بناء قائم(', '(بناء قائم)') WHERE ministry = ${MINISTRY_KEY}`;
 
   await db`
     CREATE TABLE IF NOT EXISTS qa_reviews (

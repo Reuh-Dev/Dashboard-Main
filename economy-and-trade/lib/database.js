@@ -143,13 +143,17 @@ async function migrate(db) {
   await db`
     CREATE TABLE IF NOT EXISTS qa_reviews (
       service_id INTEGER PRIMARY KEY REFERENCES services(id) ON DELETE CASCADE,
-      status TEXT NOT NULL CHECK (status IN ('validated', 'no')),
+      status TEXT NOT NULL CHECK (status IN ('validated', 'no', 'cancelled')),
       corrected_required_documents TEXT NOT NULL DEFAULT '',
       qa_note TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
   `;
+
+  // Migrate existing qa_reviews constraint to allow 'cancelled'
+  await db.unsafe(`ALTER TABLE qa_reviews DROP CONSTRAINT IF EXISTS qa_reviews_status_check`);
+  await db.unsafe(`ALTER TABLE qa_reviews ADD CONSTRAINT qa_reviews_status_check CHECK (status IN ('validated', 'no', 'cancelled'))`);
 
   await db`
     CREATE TABLE IF NOT EXISTS audit_log (
@@ -295,7 +299,7 @@ export async function getState() {
 
   const qa = {};
   rows.forEach((row) => {
-    if (row.qa_status === 'validated' || row.qa_status === 'no') {
+    if (row.qa_status === 'validated' || row.qa_status === 'no' || row.qa_status === 'cancelled') {
       qa[`record-${row.record_index}`] = {
         status: row.qa_status,
         corrected_required_documents: row.corrected_required_documents,
@@ -366,6 +370,7 @@ export async function resetRecordEdits(recordIndex) {
         service_name = source_service_name,
         directorate = source_directorate,
         department = source_department,
+        unit = source_unit,
         required_documents = source_required_documents,
         fees = source_fees,
         notes = source_notes,
@@ -380,7 +385,7 @@ export async function resetRecordEdits(recordIndex) {
 
 export async function saveQA(recordIndex, status, correctedRequiredDocuments = '', qaNote = '') {
   if (!Number.isInteger(recordIndex) || recordIndex < 0) throw new Error('record_index must be a zero-based integer.');
-  if (!['validated', 'no'].includes(status)) throw new Error('status must be either validated or no.');
+  if (!['validated', 'no', 'cancelled'].includes(status)) throw new Error('status must be validated, no, or cancelled.');
 
   await ensureDatabaseReady();
   const db = getSql();
