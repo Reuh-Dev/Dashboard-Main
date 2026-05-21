@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 const EDITABLE_FIELDS = ['service_name', 'directorate', 'department', 'unit', 'required_documents', 'fees', 'notes'];
 
-const OPTIONAL_FIELDS = new Set(['fees', 'notes']);
+const OPTIONAL_FIELDS = new Set(['unit', 'fees', 'notes']);
 
 const FIELD_META = {
   service_name:       { ar: { label: 'اسم الخدمة',          placeholder: 'أدخل اسم الخدمة…'          }, en: { label: 'Service Name',      placeholder: 'Enter service name…'      } },
