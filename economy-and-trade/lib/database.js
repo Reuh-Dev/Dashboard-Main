@@ -587,6 +587,7 @@ export async function uploadSourceJson(records) {
     notes: clean(r?.notes)
   }));
   await db.begin(async (tx) => {
+    await tx`DELETE FROM services WHERE ministry = ${MINISTRY_KEY}`;
     for (const [index, record] of normalized.entries()) {
       await tx`
         INSERT INTO services (
