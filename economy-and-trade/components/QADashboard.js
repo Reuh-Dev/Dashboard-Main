@@ -2,25 +2,21 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-const EDITABLE_FIELDS = [
-  'service_name',
-  'directorate',
-  'department',
-  'required_documents',
-  'fees',
-  'notes',
-];
+const EDITABLE_FIELDS = ['service_name', 'directorate', 'department', 'unit', 'required_documents', 'fees', 'notes'];
+
+const OPTIONAL_FIELDS = new Set(['fees', 'notes']);
 
 const FIELD_META = {
   service_name:       { ar: { label: 'اسم الخدمة',          placeholder: 'أدخل اسم الخدمة…'          }, en: { label: 'Service Name',      placeholder: 'Enter service name…'      } },
   directorate:        { ar: { label: 'المديرية',             placeholder: 'أدخل المديرية…'             }, en: { label: 'Directorate',        placeholder: 'Enter directorate…'        } },
-  department:         { ar: { label: 'القسم',                placeholder: 'أدخل القسم…'                }, en: { label: 'Department',         placeholder: 'Enter department…'         } },
+  department:         { ar: { label: 'مصلحة',               placeholder: 'أدخل المصلحة…'              }, en: { label: 'Department',         placeholder: 'Enter department…'         } },
+  unit:               { ar: { label: 'دائرة',               placeholder: 'أدخل الدائرة…'              }, en: { label: 'Unit',               placeholder: 'Enter unit…'               } },
   required_documents: { ar: { label: 'المستندات المطلوبة',   placeholder: 'أدخل المستندات المطلوبة…'   }, en: { label: 'Required Documents', placeholder: 'Enter required documents…' } },
   fees:               { ar: { label: 'الرسوم',               placeholder: 'أدخل الرسوم…'               }, en: { label: 'Fees',               placeholder: 'Enter fees…'               } },
   notes:              { ar: { label: 'ملاحظات',              placeholder: 'أدخل الملاحظات…'            }, en: { label: 'Notes',              placeholder: 'Enter notes…'              } },
 };
 
-const COMPACT_FIELDS = new Set(['service_name', 'directorate', 'department', 'fees']);
+const COMPACT_FIELDS = new Set(['service_name', 'directorate', 'department', 'unit', 'fees']);
 
 const COPY = {
   ar: {
@@ -340,7 +336,7 @@ export default function QADashboard({ records }) {
 
   async function markValidated(index) {
     const record = getRecord(index);
-    const emptyFields = EDITABLE_FIELDS.filter((f) => !String(record?.[f] || '').trim());
+    const emptyFields = EDITABLE_FIELDS.filter((f) => !OPTIONAL_FIELDS.has(f) && !String(record?.[f] || '').trim());
     if (emptyFields.length) {
       setSaveErrors(new Set(emptyFields));
       setTimeout(() => {
@@ -539,7 +535,7 @@ export default function QADashboard({ records }) {
           <div className="progressMain">
             <div className="progressLeft">
               <span className="progressPct">{pct}<span className="progressPctSymbol">%</span></span>
-              <span className="progressLabel">{t.complete}</span>
+              <span className="progressLabel">{stats.validated} من {activeCount} {t.complete}</span>
             </div>
             <div className="progressRight">
               <div className="statChip ok">
@@ -650,6 +646,7 @@ export default function QADashboard({ records }) {
                     key={field}
                     title={FIELD_META[field]?.[uiLanguage]?.label || field}
                     field={field}
+                    optional={OPTIONAL_FIELDS.has(field)}
                     selected={selected}
                     selectedRecord={selectedRecord}
                     selectedSourceRecord={selectedSourceRecord}
@@ -744,11 +741,11 @@ export default function QADashboard({ records }) {
             </div>
             <div className="serviceModalBody">
               <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5 }} dir="rtl">
-                {t.confirmCancelService(getRecord(cancelTarget)?.service_name || '')}
+                هل أنت متأكد من تعليق الخدمة <strong>"{getRecord(cancelTarget)?.service_name || ''}"</strong>؟ سيتم وضعها كخدمة ملغاة ويمكن استعادتها لاحقاً.
               </p>
               <div className="serviceModalActions">
-                <button className="btn ghost" onClick={() => setCancelTarget(null)}>{t.confirmNo}</button>
-                <button className="btn danger" onClick={() => { cancelServiceHandler(cancelTarget); setCancelTarget(null); }}>{t.confirmYes}</button>
+                <button className="btn ghost" onClick={() => setCancelTarget(null)}>لا</button>
+                <button className="btn danger" onClick={() => { cancelServiceHandler(cancelTarget); setCancelTarget(null); }}>نعم، تعليق</button>
               </div>
             </div>
           </div>
@@ -847,13 +844,13 @@ function CustomSelect({ value, onChange, options, rtl = false }) {
   );
 }
 
-function EditableTextArea({ title, field, selected, selectedRecord, selectedSourceRecord, fieldHasDataEdit, updateDataCell, compact = false, rtl = false, placeholder = '', labels, hasError = false }) {
+function EditableTextArea({ title, field, selected, selectedRecord, selectedSourceRecord, fieldHasDataEdit, updateDataCell, compact = false, rtl = false, placeholder = '', labels, hasError = false, optional = false }) {
   const edited = fieldHasDataEdit(selected, field);
   return (
     <>
       <div className={`box editableBox field-${field}${hasError ? ' fieldError' : ''}`}>
         <div className="labelRow">
-          <h3>{title}</h3>
+          <h3>{title}{optional && <em style={{ fontSize: 12, fontWeight: 400, color: 'var(--muted)', marginInlineStart: 6 }}>(اختياري)</em>}</h3>
         </div>
         <textarea
           className={`cellInput ${compact ? 'compact' : ''} ${rtl ? 'ar' : 'autoText'}`}

@@ -1,7 +1,7 @@
 import postgres from 'postgres';
 import sourceData from '@/data/tou_services.json';
 
-const EDITABLE_FIELDS = ['service_name', 'directorate', 'department', 'required_documents', 'fees', 'notes'];
+const EDITABLE_FIELDS = ['service_name', 'directorate', 'department', 'unit', 'required_documents', 'fees', 'notes'];
 const SOURCE_FILE = 'tou_services.json';
 const MINISTRY_KEY = 'tourism';
 
@@ -31,6 +31,7 @@ function readSourceRecords() {
     service_name: clean(r?.service_name),
     directorate: clean(r?.directorate),
     department: clean(r?.department || r?.sub_directorate),
+    unit: clean(r?.unit),
     required_documents: clean(r?.required_documents),
     fees: clean(r?.fees),
     notes: clean(r?.notes)
@@ -76,6 +77,8 @@ async function migrate(db) {
     ['sub_directorate', "TEXT NOT NULL DEFAULT ''"],
     ['source_department', "TEXT NOT NULL DEFAULT ''"],
     ['department', "TEXT NOT NULL DEFAULT ''"],
+    ['source_unit', "TEXT NOT NULL DEFAULT ''"],
+    ['unit', "TEXT NOT NULL DEFAULT ''"],
     ['source_fees', "TEXT NOT NULL DEFAULT ''"],
 
     ['fees', "TEXT NOT NULL DEFAULT ''"],
@@ -153,6 +156,7 @@ async function seed(db) {
           source_service_name, service_name,
           source_directorate, directorate,
           source_department, department,
+          source_unit, unit,
           source_required_documents, required_documents,
           source_fees, fees,
           source_notes, notes,
@@ -163,6 +167,7 @@ async function seed(db) {
           ${record.service_name}, ${record.service_name},
           ${record.directorate}, ${record.directorate},
           ${record.department}, ${record.department},
+          ${record.unit}, ${record.unit},
           ${record.required_documents}, ${record.required_documents},
           ${record.fees}, ${record.fees},
           ${record.notes}, ${record.notes},
@@ -177,6 +182,8 @@ async function seed(db) {
           directorate = CASE WHEN services.directorate = '' THEN EXCLUDED.directorate ELSE services.directorate END,
           source_department = EXCLUDED.source_department,
           department = CASE WHEN services.department = '' THEN EXCLUDED.department ELSE services.department END,
+          source_unit = EXCLUDED.source_unit,
+          unit = CASE WHEN services.unit = '' THEN EXCLUDED.unit ELSE services.unit END,
           source_required_documents = EXCLUDED.source_required_documents,
           required_documents = CASE WHEN services.required_documents = '' THEN EXCLUDED.required_documents ELSE services.required_documents END,
           source_fees = EXCLUDED.source_fees,
@@ -214,6 +221,8 @@ function mapRow(row) {
     directorate: row.directorate || '',
     source_department: row.source_department || '',
     department: row.department || '',
+    source_unit: row.source_unit || '',
+    unit: row.unit || '',
     source_required_documents: row.source_required_documents || '',
     required_documents: row.required_documents || '',
     source_fees: row.source_fees || '',
