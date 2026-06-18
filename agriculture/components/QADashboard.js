@@ -536,6 +536,9 @@ export default function QADashboard({ records }) {
   const { departmentOptions, departmentLabelByKey } = useMemo(() => {
     const spellings = new Map(); // key -> Map(originalSpelling -> count)
     currentRecords.forEach((r) => {
+      // Cancelled services should not contribute a department to the filter.
+      const status = (qa[recordKey(r.record_index)] || {}).status || 'pending';
+      if (status === 'cancelled') return;
       const raw = String(r.department || '').trim();
       if (!raw) return;
       const key = departmentKey(raw);
@@ -554,7 +557,7 @@ export default function QADashboard({ records }) {
     const keys = [...labelByKey.keys()].sort((a, b) => labelByKey.get(a).localeCompare(labelByKey.get(b), 'ar'));
     const options = [{ value: 'all', label: t.allDepartments }, ...keys.map((k) => ({ value: k, label: labelByKey.get(k) }))];
     return { departmentOptions: options, departmentLabelByKey: labelByKey };
-  }, [currentRecords, t]);
+  }, [currentRecords, qa, t]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const shown = useMemo(() => {
     const query = normalize(search).toLowerCase();
@@ -666,7 +669,8 @@ export default function QADashboard({ records }) {
                 const status = getQA(index).status || 'pending';
                 const deptK = departmentKey(record.department);
                 const prevDeptK = i > 0 ? departmentKey(getRecord(shown[i - 1])?.department) : null;
-                const showHeader = deptK !== prevDeptK;
+                // No department header for cancelled services (cancelled tab = flat list).
+                const showHeader = deptK !== prevDeptK && status !== 'cancelled';
                 const headerLabel = deptK ? (departmentLabelByKey.get(deptK) || String(record.department || '').trim()) : 'بدون مصلحة';
                 return (
                   <Fragment key={index}>
