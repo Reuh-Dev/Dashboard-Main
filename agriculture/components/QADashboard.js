@@ -44,7 +44,7 @@ const COPY = {
     confirmNo: 'إلغاء',
     emptySelect: 'اختر سجلاً للبدء بالتدقيق.',
     allDirectorates: 'كل المديريات',
-    allDepartments: 'كل الأقسام',
+    allDepartments: 'كل المصالح',
     addService: '+ إضافة خدمة',
     removeService: 'إلغاء الخدمة',
     addServiceTitle: 'إضافة خدمة جديدة',
@@ -130,6 +130,21 @@ function normalize(value) {
     .filter(Boolean)
     .join('\n')
     .replace(/[ \t]+/g, ' ')
+    .trim();
+}
+
+// Canonical key for grouping department (المصلحة) names that are the same but
+// written slightly differently: ignores diacritics, tatweel, alef/ya/ta-marbuta
+// variants, and ALL whitespace. Genuinely different names keep different keys.
+function departmentKey(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .replace(/[ً-ٰٟ]/g, '')
+    .replace(/[ـ]/g, '')
+    .replace(/[إأآا]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/\s+/g, '')
     .trim();
 }
 
@@ -515,11 +530,30 @@ export default function QADashboard({ records }) {
     return { validated, pending, cancelled };
   }, [qa, currentRecords]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const departmentOptions = useMemo(() => {
-    const seen = new Set();
-    currentRecords.forEach((r) => { const d = String(r.department || '').trim(); if (d) seen.add(d); });
-    const list = [...seen].sort((a, b) => a.localeCompare(b, 'ar'));
-    return [{ value: 'all', label: t.allDepartments }, ...list.map((d) => ({ value: d, label: d }))];
+  // Group department names by canonical key so near-identical spellings collapse
+  // into one filter option / one list group. labelByKey holds the display name
+  // (the most common spelling) for each key.
+  const { departmentOptions, departmentLabelByKey } = useMemo(() => {
+    const spellings = new Map(); // key -> Map(originalSpelling -> count)
+    currentRecords.forEach((r) => {
+      const raw = String(r.department || '').trim();
+      if (!raw) return;
+      const key = departmentKey(raw);
+      if (!key) return;
+      if (!spellings.has(key)) spellings.set(key, new Map());
+      const m = spellings.get(key);
+      m.set(raw, (m.get(raw) || 0) + 1);
+    });
+    const labelByKey = new Map();
+    spellings.forEach((m, key) => {
+      let best = '';
+      let bestCount = -1;
+      m.forEach((count, spelling) => { if (count > bestCount) { best = spelling; bestCount = count; } });
+      labelByKey.set(key, best);
+    });
+    const keys = [...labelByKey.keys()].sort((a, b) => labelByKey.get(a).localeCompare(labelByKey.get(b), 'ar'));
+    const options = [{ value: 'all', label: t.allDepartments }, ...keys.map((k) => ({ value: k, label: labelByKey.get(k) }))];
+    return { departmentOptions: options, departmentLabelByKey: labelByKey };
   }, [currentRecords, t]);
 
   const shown = useMemo(() => {
@@ -530,22 +564,25 @@ export default function QADashboard({ records }) {
       const haystack = EDITABLE_FIELDS.map((f) => record[f] || '').join('\n');
       const matchesSearch = !query || normalize(haystack).toLowerCase().includes(query);
       const matchesFilter = (filter === 'all' && status !== 'cancelled') || status === filter;
-      const matchesDepartment = departmentFilter === 'all' || String(record.department || '').trim() === departmentFilter;
+      const matchesDepartment = departmentFilter === 'all' || departmentKey(record.department) === departmentFilter;
       return matchesSearch && matchesFilter && matchesDepartment;
     });
-    // Display-only ordering: group services by department (المصلحة), blanks last,
+    // Display-only ordering: group services by department (المصلحة) using the
+    // canonical key so near-identical spellings stay together; blanks last,
     // keeping original record_index order within each department. Does not mutate data.
     return indices.sort((a, b) => {
-      const da = String(getRecord(a)?.department || '').trim();
-      const db = String(getRecord(b)?.department || '').trim();
+      const da = departmentKey(getRecord(a)?.department);
+      const db = departmentKey(getRecord(b)?.department);
       if (da !== db) {
         if (!da) return 1;
         if (!db) return -1;
-        return da.localeCompare(db, 'ar');
+        const la = departmentLabelByKey.get(da) || da;
+        const lb = departmentLabelByKey.get(db) || db;
+        return la.localeCompare(lb, 'ar');
       }
       return a - b;
     });
-  }, [currentRecords, search, filter, departmentFilter, qa]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentRecords, search, filter, departmentFilter, departmentLabelByKey, qa]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setSaveErrors(new Set());
@@ -627,14 +664,15 @@ export default function QADashboard({ records }) {
               {shown.length ? shown.map((index, i) => {
                 const record = getRecord(index);
                 const status = getQA(index).status || 'pending';
-                const dept = String(record.department || '').trim();
-                const prevDept = i > 0 ? String(getRecord(shown[i - 1])?.department || '').trim() : null;
-                const showHeader = dept !== prevDept;
+                const deptK = departmentKey(record.department);
+                const prevDeptK = i > 0 ? departmentKey(getRecord(shown[i - 1])?.department) : null;
+                const showHeader = deptK !== prevDeptK;
+                const headerLabel = deptK ? (departmentLabelByKey.get(deptK) || String(record.department || '').trim()) : 'بدون مصلحة';
                 return (
                   <Fragment key={index}>
                   {showHeader && (
                     <div className="deptGroupHeader ar" dir="rtl" style={{ padding: '7px 12px', margin: '8px 0 2px', fontSize: 12, fontWeight: 700, color: '#0e7490', background: '#ecfeff', borderInlineStart: '3px solid #06b6d4', borderRadius: 6 }}>
-                      {dept || 'بدون مصلحة'}
+                      {headerLabel}
                     </div>
                   )}
                   <div
