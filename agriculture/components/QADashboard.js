@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
 const EDITABLE_FIELDS = ['service_name', 'directorate', 'department', 'unit', 'required_documents', 'fees', 'notes'];
 
@@ -195,6 +195,7 @@ export default function QADashboard({ records }) {
   const [selected, setSelected] = useState(0);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
+  const [departmentFilter, setDepartmentFilter] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newServiceName, setNewServiceName] = useState('');
   const [cancelTarget, setCancelTarget] = useState(null);
@@ -514,17 +515,37 @@ export default function QADashboard({ records }) {
     return { validated, pending, cancelled };
   }, [qa, currentRecords]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const departmentOptions = useMemo(() => {
+    const seen = new Set();
+    currentRecords.forEach((r) => { const d = String(r.department || '').trim(); if (d) seen.add(d); });
+    const list = [...seen].sort((a, b) => a.localeCompare(b, 'ar'));
+    return [{ value: 'all', label: t.allDepartments }, ...list.map((d) => ({ value: d, label: d }))];
+  }, [currentRecords, t]);
+
   const shown = useMemo(() => {
     const query = normalize(search).toLowerCase();
-    return currentRecords.map((r) => r.record_index).filter((index) => {
+    const indices = currentRecords.map((r) => r.record_index).filter((index) => {
       const record = getRecord(index);
       const status = getQA(index).status || 'pending';
       const haystack = EDITABLE_FIELDS.map((f) => record[f] || '').join('\n');
       const matchesSearch = !query || normalize(haystack).toLowerCase().includes(query);
       const matchesFilter = (filter === 'all' && status !== 'cancelled') || status === filter;
-      return matchesSearch && matchesFilter;
+      const matchesDepartment = departmentFilter === 'all' || String(record.department || '').trim() === departmentFilter;
+      return matchesSearch && matchesFilter && matchesDepartment;
     });
-  }, [currentRecords, search, filter, qa]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Display-only ordering: group services by department (المصلحة), blanks last,
+    // keeping original record_index order within each department. Does not mutate data.
+    return indices.sort((a, b) => {
+      const da = String(getRecord(a)?.department || '').trim();
+      const db = String(getRecord(b)?.department || '').trim();
+      if (da !== db) {
+        if (!da) return 1;
+        if (!db) return -1;
+        return da.localeCompare(db, 'ar');
+      }
+      return a - b;
+    });
+  }, [currentRecords, search, filter, departmentFilter, qa]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setSaveErrors(new Set());
@@ -587,6 +608,7 @@ export default function QADashboard({ records }) {
           { value: 'validated', label: t.saved },
           { value: 'cancelled', label: t.cancelled },
         ]} rtl={isArabic} />
+        <CustomSelect value={departmentFilter} onChange={setDepartmentFilter} options={departmentOptions} rtl={isArabic} />
       </div>
 
       <section className="layout">
@@ -602,11 +624,20 @@ export default function QADashboard({ records }) {
               <span className="pill">{shown.length} {t.shown}</span>
             </div>
             <div className="list">
-              {shown.length ? shown.map((index) => {
+              {shown.length ? shown.map((index, i) => {
                 const record = getRecord(index);
                 const status = getQA(index).status || 'pending';
+                const dept = String(record.department || '').trim();
+                const prevDept = i > 0 ? String(getRecord(shown[i - 1])?.department || '').trim() : null;
+                const showHeader = dept !== prevDept;
                 return (
-                  <div key={index}
+                  <Fragment key={index}>
+                  {showHeader && (
+                    <div className="deptGroupHeader ar" dir="rtl" style={{ padding: '7px 12px', margin: '8px 0 2px', fontSize: 12, fontWeight: 700, color: '#0e7490', background: '#ecfeff', borderInlineStart: '3px solid #06b6d4', borderRadius: 6 }}>
+                      {dept || 'بدون مصلحة'}
+                    </div>
+                  )}
+                  <div
                     role="button"
                     tabIndex={0}
                     className={`item${index === selected ? ' active' : ''}`}
@@ -636,6 +667,7 @@ export default function QADashboard({ records }) {
                       </button>
                     )}
                   </div>
+                  </Fragment>
                 );
               }) : <div className="empty">{t.noMatchingRecords}</div>}
             </div>
