@@ -92,7 +92,7 @@ input:focus, select:focus, textarea:focus { border-color: #aaa; box-shadow: 0 0 
 .progressFill { height: 100%; background: linear-gradient(90deg, #60a5fa, #e0f2fe); border-radius: 999px; min-width: 0; transition: width .8s cubic-bezier(.4,0,.2,1); box-shadow: 0 0 14px rgba(147,197,253,.6); position: relative; }
 .progressFill::after { content: ''; position: absolute; right: -1px; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; background: #fff; border-radius: 50%; box-shadow: 0 0 8px rgba(255,255,255,.8); display: block; }
 .progressPills { flex-wrap: wrap; gap: 6px; }
-.toolbar { display: grid; grid-template-columns: 1fr 200px; gap: 10px; margin-bottom: 28px; padding-bottom: 24px; border-bottom: 1px solid var(--line); align-items: center; }
+.toolbar { display: grid; grid-template-columns: 1fr 200px 200px; gap: 10px; margin-bottom: 28px; padding-bottom: 24px; border-bottom: 1px solid var(--line); align-items: center; }
 .trashBtn { width: 32px; height: 32px; border-radius: 50%; background: #ef4444; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #fff; transition: background .15s, transform .1s; }
 .trashBtn:hover { background: #dc2626; transform: scale(1.08); }
 .searchWrap { position: relative; display: flex; align-items: center; min-width: 0; }
@@ -304,7 +304,7 @@ aside.card .cardHead .pill { background: rgba(255,255,255,.18); border-color: rg
   .header { display: block; }
   .headerActions { margin-top: 14px; justify-content: flex-start; }
   .toolbar { grid-template-columns: 1fr 1fr; }
-  .toolbarSearch { grid-column: 1 / -1; }
+  .searchWrap { grid-column: 1 / -1; }
   .wrap.rtl .layout, .wrap.ltr .layout { grid-template-columns: 1fr; }
   .wrap.rtl .layout > .recordsPanel, .wrap.rtl .layout > section.card,
   .wrap.ltr .layout > .recordsPanel, .wrap.ltr .layout > section.card { grid-column: auto; grid-row: auto; }
