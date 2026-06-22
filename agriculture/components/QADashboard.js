@@ -559,6 +559,22 @@ export default function QADashboard({ records }) {
     return { departmentOptions: options, departmentLabelByKey: labelByKey };
   }, [currentRecords, qa, t]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Per-department progress, derived live from records + qa (nothing stored).
+  // total = active (non-cancelled) services in the department; done = validated.
+  const departmentProgress = useMemo(() => {
+    const map = new Map(); // departmentKey -> { done, total }
+    currentRecords.forEach((r) => {
+      const status = (qa[recordKey(r.record_index)] || {}).status || 'pending';
+      if (status === 'cancelled') return;
+      const key = departmentKey(r.department);
+      if (!map.has(key)) map.set(key, { done: 0, total: 0 });
+      const entry = map.get(key);
+      entry.total += 1;
+      if (status === 'validated') entry.done += 1;
+    });
+    return map;
+  }, [currentRecords, qa]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const shown = useMemo(() => {
     const query = normalize(search).toLowerCase();
     const indices = currentRecords.map((r) => r.record_index).filter((index) => {
@@ -672,11 +688,19 @@ export default function QADashboard({ records }) {
                 // No department header for cancelled services (cancelled tab = flat list).
                 const showHeader = deptK !== prevDeptK && status !== 'cancelled';
                 const headerLabel = deptK ? (departmentLabelByKey.get(deptK) || String(record.department || '').trim()) : 'بدون مصلحة';
+                const deptProg = showHeader ? (departmentProgress.get(deptK) || { done: 0, total: 0 }) : null;
+                const deptPct = deptProg && deptProg.total ? Math.round((deptProg.done / deptProg.total) * 100) : 0;
                 return (
                   <Fragment key={index}>
                   {showHeader && (
-                    <div className="deptGroupHeader ar" dir="rtl" style={{ padding: '7px 12px', margin: '8px 0 2px', fontSize: 12, fontWeight: 700, color: '#0e7490', background: '#ecfeff', borderInlineStart: '3px solid #06b6d4', borderRadius: 6 }}>
-                      {headerLabel}
+                    <div className="deptGroupHeader ar" dir="rtl" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '7px 12px', margin: '8px 0 2px', fontSize: 12, fontWeight: 700, color: '#0e7490', background: '#ecfeff', borderInlineStart: '3px solid #06b6d4', borderRadius: 6 }}>
+                      <span style={{ flex: 1, minWidth: 0 }}>{headerLabel}</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }} title={`${deptProg.done} من ${deptProg.total} مكتمل`}>
+                        <span dir="ltr" style={{ fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{deptProg.done}/{deptProg.total}</span>
+                        <span style={{ width: 46, height: 6, borderRadius: 999, background: '#cffafe', overflow: 'hidden', display: 'inline-block' }}>
+                          <span style={{ display: 'block', height: '100%', width: `${deptPct}%`, background: '#06b6d4', borderRadius: 999 }} />
+                        </span>
+                      </span>
                     </div>
                   )}
                   <div
