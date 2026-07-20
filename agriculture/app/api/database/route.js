@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
-import { addAttachment, addService, clearQA, deleteAttachment, deleteService, getAttachmentData, getAuditLog, getState, importQA, importRecords, resetAllQA, resetRecordEdits, saveQA, updateRecord, uploadSourceJson } from '@/lib/database';
+import { addAttachment, addService, clearQA, deleteAttachment, deleteService, getAttachmentData, getAuditLog, getState, importQA, importRecords, resetAllQA, resetRecordEdits, saveAndValidate, saveQA, updateRecord, uploadSourceJson } from '@/lib/database';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function jsonError(error, status = 500) {
-  return NextResponse.json({ ok: false, error: error?.message || 'Database error.' }, { status });
+function jsonError(error, status) {
+  const responseStatus = Number.isInteger(status)
+    ? status
+    : (Number.isInteger(error?.statusCode) ? error.statusCode : 500);
+  const payload = { ok: false, error: error?.message || 'Database error.' };
+  if (Array.isArray(error?.missingFields)) payload.missing_fields = error.missingFields;
+  return NextResponse.json(payload, { status: responseStatus });
 }
 
 export async function GET(request) {
@@ -33,6 +38,8 @@ export async function POST(request) {
         return NextResponse.json(await updateRecord(body.record_index, body.patch));
       case 'reset_record_edits':
         return NextResponse.json(await resetRecordEdits(body.record_index));
+      case 'save_and_validate':
+        return NextResponse.json(await saveAndValidate(body.record_index, body.record ?? body.patch));
       case 'save_qa':
         return NextResponse.json(await saveQA(body.record_index, body.status, body.corrected_required_documents || '', body.qa_note || ''));
       case 'clear_qa':

@@ -2,6 +2,7 @@ import postgres from 'postgres';
 import sourceData from '@/data/agr_services.json';
 
 const EDITABLE_FIELDS = ['service_name', 'directorate', 'department', 'unit', 'required_documents', 'fees', 'notes'];
+const REQUIRED_FIELDS = ['service_name', 'directorate', 'department', 'required_documents'];
 const SOURCE_FILE = 'agr_services.json';
 const MINISTRY_KEY = 'agriculture';
 
@@ -23,6 +24,34 @@ function getSql() {
 }
 
 function clean(value) { return String(value ?? '').trim(); }
+
+function badRequest(message, details = {}) {
+  const error = new Error(message);
+  error.statusCode = 400;
+  Object.assign(error, details);
+  return error;
+}
+
+function normalizeEditableRecord(record) {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    throw badRequest('record must be an object containing all editable fields.');
+  }
+
+  const absentFields = EDITABLE_FIELDS.filter((field) => !Object.prototype.hasOwnProperty.call(record, field));
+  if (absentFields.length) {
+    throw badRequest(`record is missing editable fields: ${absentFields.join(', ')}.`, { missingFields: absentFields });
+  }
+
+  const normalized = {};
+  EDITABLE_FIELDS.forEach((field) => { normalized[field] = String(record[field] ?? ''); });
+
+  const missingFields = REQUIRED_FIELDS.filter((field) => !normalized[field].trim());
+  if (missingFields.length) {
+    throw badRequest(`Required fields are missing: ${missingFields.join(', ')}.`, { missingFields });
+  }
+
+  return normalized;
+}
 
 function readSourceRecords() {
   if (!Array.isArray(sourceData)) throw new Error('Source JSON must be an array.');
@@ -342,6 +371,75 @@ export async function resetRecordEdits(recordIndex) {
   return getState();
 }
 
+export async function saveAndValidate(recordIndex, record) {
+  if (!Number.isInteger(recordIndex) || recordIndex < 0) {
+    throw badRequest('record_index must be a zero-based integer.');
+  }
+
+  const normalizedRecord = normalizeEditableRecord(record);
+
+  await ensureDatabaseReady();
+  const db = getSql();
+  const updatedAt = now();
+
+  await db.begin(async (tx) => {
+    const [service] = await tx`
+      SELECT *
+      FROM services
+      WHERE ministry = ${MINISTRY_KEY} AND record_index = ${recordIndex}
+      FOR UPDATE
+    `;
+    if (!service) throw new Error(`Record ${recordIndex + 1} was not found.`);
+
+    const [previousReview] = await tx`
+      SELECT status
+      FROM qa_reviews
+      WHERE service_id = ${service.id}
+      FOR UPDATE
+    `;
+
+    const changedFields = {};
+    for (const field of EDITABLE_FIELDS) {
+      if (String(service[field] ?? '') !== normalizedRecord[field]) {
+        changedFields[field] = normalizedRecord[field];
+      }
+    }
+
+    if (Object.keys(changedFields).length) {
+      await tx`
+        UPDATE services
+        SET ${tx({ ...changedFields, updated_at: updatedAt })}
+        WHERE id = ${service.id}
+      `;
+
+      for (const [field, value] of Object.entries(changedFields)) {
+        await insertAudit(tx, service.id, 'save_and_validate', field, String(service[field] ?? ''), value);
+      }
+    }
+
+    await tx`
+      INSERT INTO qa_reviews (service_id, status, corrected_required_documents, qa_note, created_at, updated_at)
+      VALUES (${service.id}, 'validated', '', '', ${updatedAt}, ${updatedAt})
+      ON CONFLICT(service_id) DO UPDATE SET
+        status = EXCLUDED.status,
+        corrected_required_documents = EXCLUDED.corrected_required_documents,
+        qa_note = EXCLUDED.qa_note,
+        updated_at = EXCLUDED.updated_at
+    `;
+
+    await insertAudit(
+      tx,
+      service.id,
+      'save_and_validate',
+      'status',
+      previousReview?.status || null,
+      'validated'
+    );
+  });
+
+  return getState();
+}
+
 export async function saveQA(recordIndex, status, correctedRequiredDocuments = '', qaNote = '') {
   if (!Number.isInteger(recordIndex) || recordIndex < 0) throw new Error('record_index must be a zero-based integer.');
   if (!['validated', 'no', 'cancelled'].includes(status)) throw new Error('status must be validated, no, or cancelled.');
@@ -442,36 +540,56 @@ export async function importQA(qa) {
 }
 
 export async function addService(serviceName) {
+  const cleanServiceName = clean(serviceName);
+  if (!cleanServiceName) throw new Error('service_name is required.');
+
   await ensureDatabaseReady();
   const db = getSql();
   const createdAt = now();
-  const [{ max_index }] = await db`SELECT COALESCE(MAX(record_index), -1) AS max_index FROM services WHERE ministry = ${MINISTRY_KEY}`;
-  const newIndex = Number(max_index) + 1;
-  const [newService] = await db`
-    INSERT INTO services (
-      record_index, ministry, source_filename, filename,
-      source_service_code, service_code,
-      source_service_name, service_name,
-      source_directorate, directorate,
-      source_department, department,
-      source_required_documents, required_documents,
-      source_fees, fees,
-      source_notes, notes,
-      created_at, updated_at
-    ) VALUES (
-      ${newIndex}, ${MINISTRY_KEY}, '', '',
-      '', '',
-      ${String(serviceName)}, ${String(serviceName)},
-      '', '',
-      '', '',
-      '', '',
-      '', '',
-      '', '',
-      ${createdAt}, ${createdAt}
-    ) RETURNING id
-  `;
-  await insertAudit(db, newService.id, 'add_service', 'service_name', null, String(serviceName));
-  return getState();
+  let createdRecordIndex;
+
+  await db.begin(async (tx) => {
+    // Serialize all writers to services while allocating MAX(record_index) + 1.
+    // Reads can continue, but another insert/update/delete cannot choose the same index.
+    await tx`LOCK TABLE services IN SHARE ROW EXCLUSIVE MODE`;
+
+    const [{ next_index }] = await tx`
+      SELECT COALESCE(MAX(record_index), -1) + 1 AS next_index
+      FROM services
+      WHERE ministry = ${MINISTRY_KEY}
+    `;
+    const newIndex = Number(next_index);
+
+    const [newService] = await tx`
+      INSERT INTO services (
+        record_index, ministry, source_filename, filename,
+        source_service_code, service_code,
+        source_service_name, service_name,
+        source_directorate, directorate,
+        source_department, department,
+        source_required_documents, required_documents,
+        source_fees, fees,
+        source_notes, notes,
+        created_at, updated_at
+      ) VALUES (
+        ${newIndex}, ${MINISTRY_KEY}, '', '',
+        '', '',
+        ${cleanServiceName}, ${cleanServiceName},
+        '', '',
+        '', '',
+        '', '',
+        '', '',
+        '', '',
+        ${createdAt}, ${createdAt}
+      ) RETURNING id, record_index
+    `;
+
+    createdRecordIndex = Number(newService.record_index);
+    await insertAudit(tx, newService.id, 'add_service', 'service_name', null, cleanServiceName);
+  });
+
+  const state = await getState();
+  return { ...state, created_record_index: createdRecordIndex };
 }
 
 export async function deleteService(recordIndex) {

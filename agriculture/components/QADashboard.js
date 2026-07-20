@@ -36,6 +36,7 @@ const COPY = {
     originalValue: 'القيمة الأصلية',
     complete: 'مكتمل',
     save: 'حفظ',
+    saving: 'جارٍ الحفظ…',
     fieldRequired: 'هذا الحقل مطلوب',
     resetAllQA: 'إعادة تعيين جميع المحفوظات إلى قيد المراجعة',
     resetRecordEdits: 'إلغاء تعديلات السجل',
@@ -51,6 +52,10 @@ const COPY = {
     serviceNameLabel: 'اسم الخدمة',
     serviceNamePlaceholder: 'أدخل اسم الخدمة…',
     addBtn: 'إضافة',
+    addingService: 'جارٍ الإضافة…',
+    serviceNameRequired: 'اسم الخدمة مطلوب.',
+    addServiceFailed: 'تعذرت إضافة الخدمة. يرجى المحاولة مرة أخرى.',
+    addServiceNetworkError: 'تعذر الاتصال بالخادم. تحقق من الاتصال وحاول مرة أخرى.',
     cancelService: 'إلغاء الخدمة',
     confirmCancelService: (name) => `هل أنت متأكد من إلغاء "${name}"؟`,
     cancelled: 'ملغى',
@@ -84,6 +89,7 @@ const COPY = {
     originalValue: 'Original value',
     complete: 'Complete',
     save: 'Save',
+    saving: 'Saving…',
     fieldRequired: 'This field is required',
     resetAllQA: 'Reset all saved back to pending',
     resetRecordEdits: 'Reset record edits',
@@ -99,6 +105,10 @@ const COPY = {
     serviceNameLabel: 'Service Name',
     serviceNamePlaceholder: 'Enter service name…',
     addBtn: 'Add',
+    addingService: 'Adding…',
+    serviceNameRequired: 'Service name is required.',
+    addServiceFailed: 'Unable to add the service. Please try again.',
+    addServiceNetworkError: 'Could not reach the server. Check your connection and try again.',
     cancelService: 'Cancel Service',
     confirmCancelService: (name) => `Are you sure you want to cancel "${name}"?`,
     cancelled: 'Cancelled',
@@ -213,6 +223,9 @@ export default function QADashboard({ records }) {
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newServiceName, setNewServiceName] = useState('');
+  const [addServiceError, setAddServiceError] = useState('');
+  const [isAdding, setIsAdding] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [revertTarget, setRevertTarget] = useState(null);
   const [dbRecords, setDbRecords] = useState(initialRecords);
@@ -228,21 +241,41 @@ export default function QADashboard({ records }) {
   const [saveErrors, setSaveErrors] = useState(new Set());
   const [resetConfirm, setResetConfirm] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const saveTimers = useRef({});
+  const dirtyFieldsRef = useRef(new Map());
+  const isAddingRef = useRef(false);
+  const isSavingRef = useRef(false);
 
   const isArabic = uiLanguage === 'ar';
   const t = COPY[uiLanguage];
 
   const currentRecords = useMemo(() => [...dbRecords].sort((a, b) => a.record_index - b.record_index), [dbRecords]);
 
-  function applyDatabaseState(payload) {
-    if (Array.isArray(payload?.records)) setDbRecords(payload.records.map(cleanDbRecord));
+  function applyDatabaseState(payload, options = {}) {
+    const { preserveDrafts = true } = options;
+
+    if (Array.isArray(payload?.records)) {
+      const serverRecords = payload.records.map(cleanDbRecord);
+      setDbRecords((current) => {
+        if (!preserveDrafts || dirtyFieldsRef.current.size === 0) return serverRecords;
+
+        const localByIndex = new Map(current.map((record) => [record.record_index, record]));
+        return serverRecords.map((serverRecord) => {
+          const dirtyFields = dirtyFieldsRef.current.get(serverRecord.record_index);
+          const localRecord = localByIndex.get(serverRecord.record_index);
+          if (!dirtyFields?.size || !localRecord) return serverRecord;
+
+          const merged = { ...serverRecord };
+          dirtyFields.forEach((field) => { merged[field] = localRecord[field]; });
+          return merged;
+        });
+      });
+    }
     if (payload?.qa && typeof payload.qa === 'object' && !Array.isArray(payload.qa)) setQa(payload.qa);
     setDbReady(true);
   }
 
   async function postDatabaseAction(body, options = {}) {
-    const { applyState = false } = options;
+    const { applyState = false, preserveDrafts = true } = options;
     setDatabaseStatus('جارٍ الحفظ في قاعدة البيانات…');
     const response = await fetch('/api/database', {
       method: 'POST',
@@ -250,8 +283,12 @@ export default function QADashboard({ records }) {
       body: JSON.stringify(body)
     });
     const payload = await response.json();
-    if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'فشل حفظ قاعدة البيانات.');
-    if (applyState) applyDatabaseState(payload);
+    if (!response.ok || payload?.ok === false) {
+      const error = new Error(payload?.error || 'فشل حفظ قاعدة البيانات.');
+      if (Array.isArray(payload?.missing_fields)) error.missingFields = payload.missing_fields;
+      throw error;
+    }
+    if (applyState) applyDatabaseState(payload, { preserveDrafts });
     setDatabaseStatus('تم الحفظ');
     return payload;
   }
@@ -273,7 +310,6 @@ export default function QADashboard({ records }) {
     loadDatabase();
     return () => {
       cancelled = true;
-      Object.values(saveTimers.current).forEach((t) => window.clearTimeout(t));
     };
   }, []);
 
@@ -332,27 +368,32 @@ export default function QADashboard({ records }) {
     ));
   }
 
-  function queueRecordSave(index, field, value) {
-    const key = `${index}-${field}`;
-    if (saveTimers.current[key]) window.clearTimeout(saveTimers.current[key]);
-    setDatabaseStatus('جارٍ الحفظ في قاعدة البيانات…');
-    saveTimers.current[key] = window.setTimeout(async () => {
-      try {
-        await postDatabaseAction({ action: 'update_record', record_index: index, patch: { [field]: value } });
-      } catch (error) { setDatabaseStatus(`فشل الحفظ: ${error.message}`); }
-    }, 450);
+  function markDirtyField(index, field) {
+    const dirtyFields = dirtyFieldsRef.current.get(index) || new Set();
+    dirtyFields.add(field);
+    dirtyFieldsRef.current.set(index, dirtyFields);
+  }
+
+  function clearRecordDraft(index) {
+    dirtyFieldsRef.current.delete(index);
+  }
+
+  function editableRecordPayload(record) {
+    return Object.fromEntries(EDITABLE_FIELDS.map((field) => [field, String(record?.[field] ?? '')]));
   }
 
   function updateDataCell(index, field, value) {
     if (!EDITABLE_FIELDS.includes(field)) return;
+    markDirtyField(index, field);
     updateLocalRecord(index, { [field]: value });
-    queueRecordSave(index, field, value);
     if (saveErrors.has(field) && String(value).trim()) {
       setSaveErrors((prev) => { const next = new Set(prev); next.delete(field); return next; });
     }
   }
 
   async function markValidated(index) {
+    if (isSaving || isSavingRef.current) return;
+
     const record = getRecord(index);
     const emptyFields = EDITABLE_FIELDS.filter((f) => !OPTIONAL_FIELDS.has(f) && !String(record?.[f] || '').trim());
     if (emptyFields.length) {
@@ -363,15 +404,28 @@ export default function QADashboard({ records }) {
       }, 50);
       return;
     }
+
     setSaveErrors(new Set());
-    setQa((current) => ({
-      ...current,
-      [recordKey(index)]: { ...(current[recordKey(index)] || {}), status: 'validated', corrected_required_documents: '', qa_note: '', updated_at: new Date().toISOString() }
-    }));
+    isSavingRef.current = true;
+    setIsSaving(true);
+
     try {
-      await postDatabaseAction({ action: 'save_qa', record_index: index, status: 'validated', corrected_required_documents: '', qa_note: '' });
-      setToast('تم الحفظ');
-    } catch (error) { setDatabaseStatus(`فشل الحفظ: ${error.message}`); }
+      const payload = await postDatabaseAction({
+        action: 'save_and_validate',
+        record_index: index,
+        record: editableRecordPayload(record)
+      });
+      clearRecordDraft(index);
+      applyDatabaseState(payload);
+      setToast(isArabic ? 'تم الحفظ والتحقق' : 'Saved and validated');
+    } catch (error) {
+      if (Array.isArray(error.missingFields)) setSaveErrors(new Set(error.missingFields));
+      setDatabaseStatus(`فشل الحفظ: ${error.message}`);
+      setToast(isArabic ? 'فشل الحفظ' : 'Save failed');
+    } finally {
+      isSavingRef.current = false;
+      setIsSaving(false);
+    }
   }
 
   function exportCorrectedJSON() {
@@ -416,48 +470,83 @@ export default function QADashboard({ records }) {
   }
 
   async function resetRecordEdits(index) {
-    const source = getSourceRecord(index);
-    const patch = {};
-    EDITABLE_FIELDS.forEach((f) => { patch[f] = source[f]; });
-    updateLocalRecord(index, patch);
+    if (isSaving || isSavingRef.current) return;
     try {
-      await postDatabaseAction({ action: 'reset_record_edits', record_index: index }, { applyState: true });
+      const payload = await postDatabaseAction({ action: 'reset_record_edits', record_index: index });
+      clearRecordDraft(index);
+      applyDatabaseState(payload);
       setToast('تمت استعادة القيم الأصلية');
     } catch (error) { setDatabaseStatus(`فشل الحفظ: ${error.message}`); }
   }
 
+  function openAddServiceModal() {
+    if (isAdding || isAddingRef.current) return;
+    setNewServiceName('');
+    setAddServiceError('');
+    setShowAddModal(true);
+  }
+
+  function closeAddServiceModal() {
+    if (isAdding || isAddingRef.current) return;
+    setShowAddModal(false);
+    setNewServiceName('');
+    setAddServiceError('');
+  }
+
+  function getAddServiceErrorMessage(error) {
+    const message = String(error?.message || '').trim();
+    if (error instanceof SyntaxError || !message) return t.addServiceFailed;
+    if (/failed to fetch|networkerror|load failed/i.test(message)) return t.addServiceNetworkError;
+    return message;
+  }
+
   async function addServiceHandler() {
     const name = newServiceName.trim();
-    if (!name) return;
+    if (!name) {
+      setAddServiceError(t.serviceNameRequired);
+      return;
+    }
+    if (isAdding || isAddingRef.current) return;
+
+    // The ref closes the tiny gap before React commits the state update, so a
+    // rapid Enter/click pair cannot start two requests in the same render.
+    isAddingRef.current = true;
+    setAddServiceError('');
+    setIsAdding(true);
+
     try {
       const payload = await postDatabaseAction({ action: 'add_service', service_name: name }, { applyState: true });
       setShowAddModal(false);
       setNewServiceName('');
-      const newIndex = (payload?.records || []).reduce((max, r) => Math.max(max, r.record_index), -1);
-      if (newIndex >= 0) setSelected(newIndex);
+      setAddServiceError('');
+      const newIndex = Number(payload?.created_record_index);
+      if (Number.isInteger(newIndex) && newIndex >= 0) setSelected(newIndex);
       setToast(isArabic ? 'تمت إضافة الخدمة' : 'Service added');
-    } catch (error) { setDatabaseStatus(error.message); }
+    } catch (error) {
+      const message = getAddServiceErrorMessage(error);
+      setAddServiceError(message);
+      setDatabaseStatus(message);
+    } finally {
+      isAddingRef.current = false;
+      setIsAdding(false);
+    }
   }
 
   async function cancelServiceHandler(recordIndex) {
+    if (isSaving || isSavingRef.current) return;
     try {
-      setQa((current) => ({
-        ...current,
-        [recordKey(recordIndex)]: { ...(current[recordKey(recordIndex)] || {}), status: 'cancelled', corrected_required_documents: '', qa_note: '', updated_at: new Date().toISOString() }
-      }));
-      await postDatabaseAction({ action: 'save_qa', record_index: recordIndex, status: 'cancelled', corrected_required_documents: '', qa_note: '' });
+      const payload = await postDatabaseAction({ action: 'save_qa', record_index: recordIndex, status: 'cancelled', corrected_required_documents: '', qa_note: '' });
+      clearRecordDraft(recordIndex);
+      applyDatabaseState(payload);
       setToast(isArabic ? 'تم إلغاء الخدمة' : 'Service cancelled');
     } catch (error) { setDatabaseStatus(error.message); }
   }
 
   async function revertServiceHandler(recordIndex) {
+    if (isSaving || isSavingRef.current) return;
     try {
-      setQa((current) => {
-        const next = { ...current };
-        delete next[recordKey(recordIndex)];
-        return next;
-      });
-      await postDatabaseAction({ action: 'clear_qa', record_index: recordIndex });
+      const payload = await postDatabaseAction({ action: 'clear_qa', record_index: recordIndex });
+      applyDatabaseState(payload);
       setToast(isArabic ? 'تمت استعادة الخدمة' : 'Service restored');
     } catch (error) { setDatabaseStatus(error.message); }
   }
@@ -472,7 +561,9 @@ export default function QADashboard({ records }) {
       if (!Array.isArray(parsed)) throw new Error(isArabic ? 'الملف يجب أن يكون مصفوفة JSON' : 'File must be a JSON array.');
       setShowAdmin(false);
       setToast(isArabic ? 'جارٍ رفع البيانات…' : 'Uploading data…');
-      await postDatabaseAction({ action: 'upload_source_json', records: parsed }, { applyState: true });
+      const payload = await postDatabaseAction({ action: 'upload_source_json', records: parsed });
+      dirtyFieldsRef.current.clear();
+      applyDatabaseState(payload, { preserveDrafts: false });
       setToast(isArabic ? 'تم رفع البيانات بنجاح' : 'Data uploaded successfully');
     } catch (err) {
       setToast(isArabic ? `فشل الرفع: ${err.message}` : `Upload failed: ${err.message}`);
@@ -480,7 +571,7 @@ export default function QADashboard({ records }) {
   }
 
   async function processFiles(files) {
-    if (!files.length || selected === null) return;
+    if (isSaving || isSavingRef.current || !files.length || selected === null) return;
     const currentAttachments = getRecord(selected)?.attachments || [];
     const MAX_SIZE = 5 * 1024 * 1024;
     const ALLOWED_EXTS = ['.pdf', '.doc', '.docx'];
@@ -504,6 +595,7 @@ export default function QADashboard({ records }) {
   }
 
   async function removeAttachmentHandler(attachmentId) {
+    if (isSaving || isSavingRef.current) return;
     try {
       await postDatabaseAction({ action: 'delete_attachment', attachment_id: attachmentId }, { applyState: true });
       setToast(isArabic ? 'تم حذف المرفق' : 'Attachment removed');
@@ -670,7 +762,7 @@ export default function QADashboard({ records }) {
       <section className="layout">
         <div className="recordsPanel">
           <div className="serviceBar">
-            <button className="btn addServiceBtn" onClick={() => { setShowAddModal(true); setNewServiceName(''); }}>
+            <button className="btn addServiceBtn" onClick={openAddServiceModal}>
               {t.addService}
             </button>
           </div>
@@ -716,6 +808,7 @@ export default function QADashboard({ records }) {
                         className="itemRevertBtn"
                         title="استعادة الخدمة"
                         aria-label="استعادة الخدمة"
+                        disabled={isSaving}
                         onClick={(e) => { e.stopPropagation(); setRevertTarget(index); }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                           <polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 .49-3" />
@@ -726,6 +819,7 @@ export default function QADashboard({ records }) {
                         className="itemTrashBtn"
                         title="إلغاء الخدمة"
                         aria-label="إلغاء الخدمة"
+                        disabled={isSaving}
                         onClick={(e) => { e.stopPropagation(); setCancelTarget(index); }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                           <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
@@ -755,7 +849,9 @@ export default function QADashboard({ records }) {
               <>
                 <div className="sep" />
                 <div className="row" style={{ marginBottom: 4 }}>
-                  <button className="btn ok" onClick={() => markValidated(selected)}>{t.save}</button>
+                  <button className="btn ok" onClick={() => markValidated(selected)} disabled={isSaving}>
+                    {isSaving ? t.saving : t.save}
+                  </button>
                 </div>
                 <div className="sep" />
                 {EDITABLE_FIELDS.map((field) => (
@@ -774,6 +870,7 @@ export default function QADashboard({ records }) {
                     rtl={isArabic}
                     placeholder={FIELD_META[field]?.[uiLanguage]?.placeholder || ''}
                     hasError={saveErrors.has(field)}
+                    disabled={isSaving}
                   />
                 ))}
                 <div className="sep" />
@@ -791,7 +888,7 @@ export default function QADashboard({ records }) {
                           <span className="attachmentIcon">📄</span>
                           <button className="attachmentName" onClick={() => downloadAttachment(a.id, a.name)}>{a.name}</button>
                           <span className="attachmentSize">{(a.size / 1024).toFixed(0)} KB</span>
-                          <button className="attachmentRemove" onClick={() => removeAttachmentHandler(a.id)}>✕</button>
+                          <button className="attachmentRemove" onClick={() => removeAttachmentHandler(a.id)} disabled={isSaving}>✕</button>
                         </div>
                       ))}
                     </div>
@@ -799,20 +896,22 @@ export default function QADashboard({ records }) {
                   <label className="btn attachBtn">
                     <span className="attachBtnLabel">{t.attachForms}</span>
                     <span className="attachBtnHint">{t.attachFormsHint}</span>
-                    <input type="file" hidden accept=".pdf,.doc,.docx" multiple onChange={handleAttachFiles} />
+                    <input type="file" hidden accept=".pdf,.doc,.docx" multiple onChange={handleAttachFiles} disabled={isSaving} />
                   </label>
                 </div>
                 <div className="sep" />
                 <div className="row">
-                  <button className="btn ok" onClick={() => markValidated(selected)}>{t.save}</button>
+                  <button className="btn ok" onClick={() => markValidated(selected)} disabled={isSaving}>
+                    {isSaving ? t.saving : t.save}
+                  </button>
                   {selectedEdited && !resetConfirm && (
-                    <button className="btn warn" onClick={() => setResetConfirm(true)}>{t.resetRecordEdits}</button>
+                    <button className="btn warn" onClick={() => setResetConfirm(true)} disabled={isSaving}>{t.resetRecordEdits}</button>
                   )}
                   {selectedEdited && resetConfirm && (
                     <div className="row" style={{ alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: '#92400e' }}>{t.confirmResetMsg}</span>
-                      <button className="btn warn" style={{ padding: '6px 14px', minHeight: 36 }} onClick={() => { resetRecordEdits(selected); setResetConfirm(false); }}>{t.confirmYes}</button>
-                      <button className="btn ghost" style={{ padding: '6px 14px', minHeight: 36 }} onClick={() => setResetConfirm(false)}>{t.confirmNo}</button>
+                      <button className="btn warn" style={{ padding: '6px 14px', minHeight: 36 }} onClick={() => { resetRecordEdits(selected); setResetConfirm(false); }} disabled={isSaving}>{t.confirmYes}</button>
+                      <button className="btn ghost" style={{ padding: '6px 14px', minHeight: 36 }} onClick={() => setResetConfirm(false)} disabled={isSaving}>{t.confirmNo}</button>
                     </div>
                   )}
                 </div>
@@ -823,26 +922,52 @@ export default function QADashboard({ records }) {
       </section>
 
       {showAddModal && (
-        <div className="serviceModalOverlay" onClick={() => setShowAddModal(false)}>
-          <div className="serviceModal" onClick={(e) => e.stopPropagation()}>
+        <div className="serviceModalOverlay" onClick={closeAddServiceModal}>
+          <div
+            className="serviceModal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-service-title"
+            aria-busy={isAdding}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="serviceModalHead">
-              <span>{t.addServiceTitle}</span>
-              <button className="adminClose" onClick={() => setShowAddModal(false)}>✕</button>
+              <span id="add-service-title">{t.addServiceTitle}</span>
+              <button type="button" className="adminClose" onClick={closeAddServiceModal} disabled={isAdding} aria-label={t.confirmNo}>✕</button>
             </div>
             <div className="serviceModalBody">
-              <label className="serviceModalLabel">{t.serviceNameLabel}</label>
+              <label className="serviceModalLabel" htmlFor="new-service-name">{t.serviceNameLabel}</label>
               <input
+                id="new-service-name"
                 className="serviceModalInput"
                 dir={isArabic ? 'rtl' : 'ltr'}
                 autoFocus
                 value={newServiceName}
-                onChange={(e) => setNewServiceName(e.target.value)}
+                onChange={(e) => {
+                  setNewServiceName(e.target.value);
+                  if (addServiceError) setAddServiceError('');
+                }}
                 placeholder={t.serviceNamePlaceholder}
-                onKeyDown={(e) => { if (e.key === 'Enter' && newServiceName.trim()) addServiceHandler(); }}
+                disabled={isAdding}
+                aria-invalid={Boolean(addServiceError)}
+                aria-describedby={addServiceError ? 'add-service-error' : undefined}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (!e.repeat) void addServiceHandler();
+                  }
+                }}
               />
+              {addServiceError && (
+                <p id="add-service-error" className="serviceModalError" role="alert" aria-live="assertive" aria-atomic="true" dir="auto">
+                  {addServiceError}
+                </p>
+              )}
               <div className="serviceModalActions">
-                <button className="btn ghost" onClick={() => setShowAddModal(false)}>{t.confirmNo}</button>
-                <button className="btn ok" onClick={addServiceHandler} disabled={!newServiceName.trim()}>{t.addBtn}</button>
+                <button type="button" className="btn ghost" onClick={closeAddServiceModal} disabled={isAdding}>{t.confirmNo}</button>
+                <button type="button" className="btn ok" onClick={addServiceHandler} disabled={isAdding || !newServiceName.trim()}>
+                  {isAdding ? t.addingService : t.addBtn}
+                </button>
               </div>
             </div>
           </div>
@@ -862,7 +987,7 @@ export default function QADashboard({ records }) {
               </p>
               <div className="serviceModalActions">
                 <button className="btn ghost" onClick={() => setCancelTarget(null)}>لا</button>
-                <button className="btn danger" onClick={() => { cancelServiceHandler(cancelTarget); setCancelTarget(null); }}>نعم، إلغاء</button>
+                <button className="btn danger" disabled={isSaving} onClick={() => { cancelServiceHandler(cancelTarget); setCancelTarget(null); }}>نعم، إلغاء</button>
               </div>
             </div>
           </div>
@@ -882,7 +1007,7 @@ export default function QADashboard({ records }) {
               </p>
               <div className="serviceModalActions">
                 <button className="btn ghost" onClick={() => setRevertTarget(null)}>{t.confirmNo}</button>
-                <button className="btn ok" onClick={() => { revertServiceHandler(revertTarget); setRevertTarget(null); }}>نعم، استعادة</button>
+                <button className="btn ok" disabled={isSaving} onClick={() => { revertServiceHandler(revertTarget); setRevertTarget(null); }}>نعم، استعادة</button>
               </div>
             </div>
           </div>
@@ -966,7 +1091,7 @@ function CustomSelect({ value, onChange, options, rtl = false }) {
   );
 }
 
-function EditableTextArea({ title, field, selected, selectedRecord, selectedSourceRecord, fieldHasDataEdit, updateDataCell, compact = false, rtl = false, placeholder = '', labels, hasError = false, optional = false }) {
+function EditableTextArea({ title, field, selected, selectedRecord, selectedSourceRecord, fieldHasDataEdit, updateDataCell, compact = false, rtl = false, placeholder = '', labels, hasError = false, optional = false, disabled = false }) {
   const edited = fieldHasDataEdit(selected, field);
   return (
     <>
@@ -980,6 +1105,7 @@ function EditableTextArea({ title, field, selected, selectedRecord, selectedSour
           value={selectedRecord[field] || ''}
           onChange={(e) => updateDataCell(selected, field, e.target.value)}
           placeholder={placeholder}
+          disabled={disabled}
         />
         {hasError && <p className="fieldErrorMsg">{labels.fieldRequired}</p>}
         {edited ? (

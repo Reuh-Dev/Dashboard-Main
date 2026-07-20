@@ -221,8 +221,11 @@ aside.card .cardHead .pill { background: rgba(255,255,255,.18); border-color: rg
 .serviceModalHead { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: #1e40af; color: #fff; font-weight: 700; font-size: 15px; }
 .serviceModalBody { padding: 22px 20px 18px; display: flex; flex-direction: column; gap: 10px; }
 .serviceModalLabel { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; }
-.serviceModalInput { width: 100%; border: 1.5px solid var(--line); border-radius: 10px; padding: 10px 14px; font-size: 15px; outline: none; transition: border-color .15s; }
+.serviceModalInput { width: 100%; border: 1.5px solid var(--line); border-radius: 10px; padding: 10px 14px; font-size: 15px; outline: none; transition: border-color .15s, box-shadow .15s; }
 .serviceModalInput:focus { border-color: #2563eb; }
+.serviceModalInput[aria-invalid="true"] { border-color: #ef4444; }
+.serviceModalInput[aria-invalid="true"]:focus { border-color: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.1); }
+.serviceModalError { margin: 0; padding: 10px 12px; border: 1px solid #fecaca; border-radius: 10px; background: #fef2f2; color: var(--no); font-size: 13px; font-weight: 600; line-height: 1.5; text-align: start; white-space: pre-wrap; overflow-wrap: anywhere; }
 .serviceModalActions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
 .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: #111; color: #fff; border-radius: 999px; padding: 10px 14px; opacity: 0; pointer-events: none; transition: .16s; z-index: 30; }
 .toast.show { opacity: 1; }
