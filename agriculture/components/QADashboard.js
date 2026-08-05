@@ -3,6 +3,10 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
 const EDITABLE_FIELDS = ['service_name', 'directorate', 'department', 'unit', 'required_documents', 'fees', 'notes'];
+const MAX_ATTACHMENTS_PER_SERVICE = 5;
+const MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024;
+const MAX_ATTACHMENT_MB = MAX_ATTACHMENT_BYTES / (1024 * 1024);
+const ALLOWED_ATTACHMENT_EXTENSIONS = new Set(['.pdf', '.doc', '.docx']);
 
 const OPTIONAL_FIELDS = new Set(['unit', 'fees', 'notes']);
 
@@ -23,7 +27,7 @@ const COPY = {
     switchToArabic: 'AR',
     switchToEnglish: 'EN',
     title: 'لوحة تدقيق خدمات وزارة الزراعة',
-    exportCorrectedJSON: 'تصدير JSON المصحّح',
+    exportCorrectedJSON: 'تصدير JSON مع المستندات',
     pending: 'قيد المراجعة',
     searchPlaceholder: 'ابحث في الخدمات…',
     allRecords: 'كل الخدمات',
@@ -60,23 +64,30 @@ const COPY = {
     confirmCancelService: (name) => `هل أنت متأكد من إلغاء "${name}"؟`,
     cancelled: 'ملغى',
     attachForms: '📎 إرفاق المستندات',
-    attachFormsHint: 'انقر لاختيار ملف PDF أو Word',
+    attachFormsHint: `انقر لاختيار ملف PDF أو Word (حتى ${MAX_ATTACHMENT_MB}MB)`,
     attachedForms: 'النماذج المرفقة',
-    fileTooLarge: (name) => `${name} يتجاوز الحد الأقصى (5MB)`,
-    maxAttachments: 'الحد الأقصى 5 مرفقات لكل خدمة',
+    uploadingAttachments: 'جارٍ رفع المستندات…',
+    fileTooLarge: (name) => `${name} يتجاوز الحد الأقصى (${MAX_ATTACHMENT_MB}MB)`,
+    maxAttachments: `الحد الأقصى ${MAX_ATTACHMENTS_PER_SERVICE} مرفقات لكل خدمة`,
     invalidFileType: 'يُسمح فقط بملفات PDF وWord',
+    downloadAttachment: 'تنزيل',
+    downloadingAttachment: 'جارٍ التنزيل…',
     downloadAllAttachments: 'تنزيل جميع المرفقات',
     noAttachments: 'لا توجد مرفقات في هذه الوزارة',
     preparingDownload: 'جارٍ تحضير الملفات…',
     downloadComplete: 'اكتمل التنزيل',
     zipFilename: 'مرفقات_الزراعة.zip',
+    preparingExport: 'جارٍ تحضير JSON والمستندات…',
+    exportComplete: 'تم تصدير JSON والمستندات',
+    exportFailed: 'فشل تصدير JSON والمستندات',
+    exportPackageFilename: 'خدمات_الزراعة_مع_المستندات.zip',
     status: { validated: 'محفوظ', no: 'لا', pending: 'قيد المراجعة', cancelled: 'ملغى' }
   },
   en: {
     switchToArabic: 'AR',
     switchToEnglish: 'EN',
     title: 'Agriculture Services QA Dashboard',
-    exportCorrectedJSON: 'Export corrected JSON',
+    exportCorrectedJSON: 'Export JSON + documents',
     pending: 'Pending',
     searchPlaceholder: 'Search services…',
     allRecords: 'All records',
@@ -113,16 +124,23 @@ const COPY = {
     confirmCancelService: (name) => `Are you sure you want to cancel "${name}"?`,
     cancelled: 'Cancelled',
     attachForms: '📎 Attach Documents',
-    attachFormsHint: 'Click to select or drag & drop a PDF / Word file',
+    attachFormsHint: `Click to select or drag & drop a PDF / Word file (max ${MAX_ATTACHMENT_MB}MB)`,
     attachedForms: 'Attached Forms',
-    fileTooLarge: (name) => `${name} exceeds 5MB limit`,
-    maxAttachments: 'Maximum 5 attachments per service',
+    uploadingAttachments: 'Uploading documents…',
+    fileTooLarge: (name) => `${name} exceeds the ${MAX_ATTACHMENT_MB}MB limit`,
+    maxAttachments: `Maximum ${MAX_ATTACHMENTS_PER_SERVICE} attachments per service`,
     invalidFileType: 'Only PDF and Word files are allowed',
+    downloadAttachment: 'Download',
+    downloadingAttachment: 'Downloading…',
     downloadAllAttachments: 'Download All Attachments',
     noAttachments: 'No attachments found for this ministry',
     preparingDownload: 'Preparing download…',
     downloadComplete: 'Download complete',
     zipFilename: 'agriculture_attachments.zip',
+    preparingExport: 'Preparing JSON and documents…',
+    exportComplete: 'JSON and documents exported',
+    exportFailed: 'JSON and document export failed',
+    exportPackageFilename: 'agriculture_services_with_documents.zip',
     status: { validated: 'Saved', no: 'No', pending: 'Pending', cancelled: 'Cancelled' }
   }
 };
@@ -173,13 +191,69 @@ function statusClass(status) {
 }
 
 
-function downloadBlob(content, filename, type) {
-  const blob = new Blob([content], { type });
+function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => resolve(event.target?.result);
+    reader.onerror = () => reject(reader.error || new Error(`Could not read ${file.name}.`));
+    reader.onabort = () => reject(new Error(`Reading ${file.name} was cancelled.`));
+    reader.readAsDataURL(file);
+  });
+}
+
+function safePathSegment(value, fallback = 'item', maxLength = 100) {
+  let cleaned = String(value || '')
+    .normalize('NFKC')
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .replace(/[\\/:*?"<>|]/g, '-')
+    .replace(/\s+/g, ' ')
+    .replace(/[. ]+$/g, '')
+    .trim();
+  cleaned = Array.from(cleaned).slice(0, maxLength).join('').replace(/[. ]+$/g, '');
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(cleaned)) cleaned = `_${cleaned}`;
+  return cleaned || fallback;
+}
+
+function uniqueAttachmentFilename(filename, usedNames) {
+  const originalName = String(filename || 'document');
+  const lastDot = originalName.lastIndexOf('.');
+  const hasExtension = lastDot > 0 && lastDot < originalName.length - 1;
+  const rawBase = hasExtension ? originalName.slice(0, lastDot) : originalName;
+  const rawExtension = hasExtension ? originalName.slice(lastDot + 1) : '';
+  const cleanExtension = safePathSegment(rawExtension, '', 10).replace(/\s+/g, '');
+  const extension = cleanExtension ? `.${cleanExtension}` : '';
+  const base = safePathSegment(rawBase, 'document', Math.max(40, 110 - extension.length));
+  const safeName = `${base}${extension}`;
+
+  let candidate = safeName;
+  let suffix = 2;
+  while (usedNames.has(candidate.toLowerCase())) {
+    candidate = `${base} (${suffix})${extension}`;
+    suffix += 1;
+  }
+  usedNames.add(candidate.toLowerCase());
+  return candidate;
+}
+
+async function fetchAttachmentBinary(attachment) {
+  const response = await fetch(`/api/database?attachment_id=${encodeURIComponent(attachment.id)}&download=1`, { cache: 'no-store' });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.error || `Could not download ${attachment.name || 'attachment'}.`);
+  }
+  const bytes = await response.arrayBuffer();
+  const contentType = String(response.headers.get('content-type') || attachment.type || 'application/octet-stream')
+    .split(';', 1)[0]
+    .trim();
+  return { bytes, contentType };
 }
 
 function cleanSourceRecord(record) {
@@ -241,9 +315,12 @@ export default function QADashboard({ records }) {
   const [saveErrors, setSaveErrors] = useState(new Set());
   const [resetConfirm, setResetConfirm] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [downloadingAttachmentId, setDownloadingAttachmentId] = useState(null);
+  const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const dirtyFieldsRef = useRef(new Map());
   const isAddingRef = useRef(false);
   const isSavingRef = useRef(false);
+  const attachmentUploadInProgressRef = useRef(false);
 
   const isArabic = uiLanguage === 'ar';
   const t = COPY[uiLanguage];
@@ -392,7 +469,7 @@ export default function QADashboard({ records }) {
   }
 
   async function markValidated(index) {
-    if (isSaving || isSavingRef.current) return;
+    if (isSaving || isSavingRef.current || attachmentUploadInProgressRef.current) return;
 
     const record = getRecord(index);
     const emptyFields = EDITABLE_FIELDS.filter((f) => !OPTIONAL_FIELDS.has(f) && !String(record?.[f] || '').trim());
@@ -428,45 +505,113 @@ export default function QADashboard({ records }) {
     }
   }
 
-  function exportCorrectedJSON() {
-    const cleanRecords = currentRecords
-      .filter((r) => (getQA(r.record_index).status || 'pending') !== 'cancelled')
-      .map((r) => {
-        const result = { service_code: r.service_code };
-        EDITABLE_FIELDS.forEach((f) => { result[f] = r[f]; });
-        return result;
-      });
-    downloadBlob(JSON.stringify(cleanRecords, null, 2), 'agr_services_corrected.json', 'application/json;charset=utf-8');
-  }
+  async function exportCorrectedJSON() {
+    if (attachmentUploadInProgressRef.current) { setToast(t.uploadingAttachments); return; }
+    setToast(t.preparingExport);
 
-  async function downloadAllAttachments() {
-    const servicesWithAttachments = currentRecords.filter((r) => r.attachments?.length > 0);
-    if (!servicesWithAttachments.length) { setToast(t.noAttachments); return; }
-    setToast(t.preparingDownload);
     try {
       const { default: JSZip } = await import('jszip');
       const zip = new JSZip();
+      const exportRecords = [];
+      const includedRecords = currentRecords
+        .filter((record) => (getQA(record.record_index).status || 'pending') !== 'cancelled');
+
+      for (const record of includedRecords) {
+        const result = { service_code: record.service_code };
+        EDITABLE_FIELDS.forEach((field) => { result[field] = record[field]; });
+        result.attachments = [];
+
+        if (record.attachments?.length) {
+          const ordinal = String(record.record_index + 1).padStart(4, '0');
+          const safeCode = safePathSegment(record.service_code, '', 25);
+          const codePart = safeCode ? ` - ${safeCode}` : '';
+          const servicePart = safePathSegment(record.service_name, 'service', 55);
+          const serviceFolder = `documents/${ordinal}${codePart} - ${servicePart}`;
+          const usedNames = new Set();
+
+          for (const attachment of record.attachments) {
+            const { bytes, contentType } = await fetchAttachmentBinary(attachment);
+            const exportedFilename = uniqueAttachmentFilename(attachment.name, usedNames);
+            const relativePath = `${serviceFolder}/${exportedFilename}`;
+            zip.file(relativePath, bytes);
+            result.attachments.push({
+              attachment_id: Number(attachment.id),
+              name: attachment.name,
+              path: relativePath,
+              file_type: contentType,
+              size_bytes: bytes.byteLength
+            });
+          }
+        }
+
+        exportRecords.push(result);
+      }
+
+      zip.file('agr_services_corrected.json', JSON.stringify(exportRecords, null, 2));
+      zip.file(
+        'README.txt',
+        [
+          'Agriculture services export',
+          '',
+          'agr_services_corrected.json contains the corrected, non-cancelled service records.',
+          'Each service has an attachments array.',
+          'For every attachment, path points to the matching file inside this ZIP package.',
+          'Paths use forward slashes and are relative to the ZIP root.',
+          'attachment_id is the database attachment ID at the time of export.',
+          'Duplicate filenames are renamed inside the ZIP, and path always records the exported filename.'
+        ].join('\n')
+      );
+
+      const blob = await zip.generateAsync({
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 }
+      });
+      downloadBlob(blob, t.exportPackageFilename);
+      setToast(t.exportComplete);
+    } catch (error) {
+      console.error('Export failed', error);
+      setToast(`${t.exportFailed}: ${error.message}`);
+    }
+  }
+
+  async function downloadAllAttachments() {
+    if (attachmentUploadInProgressRef.current) { setToast(t.uploadingAttachments); return; }
+    const servicesWithAttachments = currentRecords.filter((record) => record.attachments?.length > 0);
+    if (!servicesWithAttachments.length) { setToast(t.noAttachments); return; }
+    setToast(t.preparingDownload);
+
+    try {
+      const { default: JSZip } = await import('jszip');
+      const zip = new JSZip();
+
       for (const record of servicesWithAttachments) {
-        const folderName = `${String(record.record_index + 1).padStart(2, '0')} - ${record.service_name}`
-          .slice(0, 80).replace(/[/\\?%*:|"<>]/g, '-');
+        const ordinal = String(record.record_index + 1).padStart(4, '0');
+        const folderName = `${ordinal} - ${safePathSegment(record.service_name, 'service', 70)}`;
         const folder = zip.folder(folderName);
-        for (const att of record.attachments) {
-          try {
-            const res = await fetch(`/api/database?attachment_id=${att.id}`);
-            const payload = await res.json();
-            if (!payload?.data) continue;
-            const base64 = payload.data.includes(',') ? payload.data.split(',')[1] : payload.data;
-            folder.file(att.name, base64, { base64: true });
-          } catch { /* skip failed file */ }
+        const usedNames = new Set();
+
+        for (const attachment of record.attachments) {
+          const { bytes } = await fetchAttachmentBinary(attachment);
+          folder.file(uniqueAttachmentFilename(attachment.name, usedNames), bytes);
         }
       }
-      const blob = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = t.zipFilename;
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
+
+      zip.file(
+        'README.txt',
+        'Attachments are grouped by service. Duplicate filenames are renamed so no document is overwritten.\n'
+      );
+      const blob = await zip.generateAsync({
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 }
+      });
+      downloadBlob(blob, t.zipFilename);
       setToast(t.downloadComplete);
-    } catch (err) { setToast(isArabic ? 'فشل التنزيل' : 'Download failed'); }
+    } catch (error) {
+      console.error('Attachment ZIP download failed', error);
+      setToast(`${isArabic ? 'فشل التنزيل' : 'Download failed'}: ${error.message}`);
+    }
   }
 
   async function resetRecordEdits(index) {
@@ -555,13 +700,30 @@ export default function QADashboard({ records }) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+    if (isSaving || isSavingRef.current || attachmentUploadInProgressRef.current) {
+      setToast(attachmentUploadInProgressRef.current ? t.uploadingAttachments : t.saving);
+      return;
+    }
     try {
       const text = await file.text();
       const parsed = JSON.parse(text);
       if (!Array.isArray(parsed)) throw new Error(isArabic ? 'الملف يجب أن يكون مصفوفة JSON' : 'File must be a JSON array.');
+      const attachmentCount = currentRecords.reduce((total, record) => total + (record.attachments?.length || 0), 0);
+      if (attachmentCount > 0) {
+        const confirmed = window.confirm(isArabic
+          ? `تحذير: استبدال ملف JSON سيحذف ${attachmentCount} مستند مرفق حالياً. هل تريد المتابعة؟`
+          : `Warning: replacing the source JSON will delete ${attachmentCount} currently attached document${attachmentCount === 1 ? '' : 's'}. Continue?`);
+        if (!confirmed) return;
+      }
+
       setShowAdmin(false);
       setToast(isArabic ? 'جارٍ رفع البيانات…' : 'Uploading data…');
-      const payload = await postDatabaseAction({ action: 'upload_source_json', records: parsed });
+      const payload = await postDatabaseAction({
+        action: 'upload_source_json',
+        records: parsed,
+        confirm_delete_attachments: attachmentCount > 0,
+        expected_attachment_count: attachmentCount
+      });
       dirtyFieldsRef.current.clear();
       applyDatabaseState(payload, { preserveDrafts: false });
       setToast(isArabic ? 'تم رفع البيانات بنجاح' : 'Data uploaded successfully');
@@ -571,20 +733,67 @@ export default function QADashboard({ records }) {
   }
 
   async function processFiles(files) {
-    if (isSaving || isSavingRef.current || !files.length || selected === null) return;
-    const currentAttachments = getRecord(selected)?.attachments || [];
-    const MAX_SIZE = 5 * 1024 * 1024;
-    const ALLOWED_EXTS = ['.pdf', '.doc', '.docx'];
-    for (const file of files) {
-      const ext = '.' + file.name.split('.').pop().toLowerCase();
-      if (!ALLOWED_EXTS.includes(ext)) { setToast(t.invalidFileType); continue; }
-      if (currentAttachments.length >= 5) { setToast(t.maxAttachments); break; }
-      if (file.size > MAX_SIZE) { setToast(t.fileTooLarge(file.name)); continue; }
-      const data = await new Promise((resolve) => { const r = new FileReader(); r.onload = (ev) => resolve(ev.target.result); r.readAsDataURL(file); });
-      try {
-        await postDatabaseAction({ action: 'add_attachment', record_index: selected, attachment: { name: file.name, type: file.type, size: file.size, data } }, { applyState: true });
-        setToast(isArabic ? 'تم إرفاق الملف' : 'File attached');
-      } catch (err) { setDatabaseStatus(err.message); }
+    const fileList = Array.from(files || []);
+    if (
+      isSaving || isSavingRef.current || attachmentUploadInProgressRef.current
+      || !fileList.length || selected === null
+    ) return;
+
+    const recordIndex = selected;
+    const currentAttachments = getRecord(recordIndex)?.attachments || [];
+    let remainingSlots = MAX_ATTACHMENTS_PER_SERVICE - currentAttachments.length;
+    if (remainingSlots <= 0) { setToast(t.maxAttachments); return; }
+
+    attachmentUploadInProgressRef.current = true;
+    setIsUploadingAttachments(true);
+    let uploadedCount = 0;
+    const errors = [];
+
+    try {
+      for (const file of fileList) {
+        if (remainingSlots <= 0) {
+          errors.push(t.maxAttachments);
+          break;
+        }
+
+        const lastDot = file.name.lastIndexOf('.');
+        const extension = lastDot >= 0 ? file.name.slice(lastDot).toLowerCase() : '';
+        if (!ALLOWED_ATTACHMENT_EXTENSIONS.has(extension)) {
+          errors.push(`${file.name}: ${t.invalidFileType}`);
+          continue;
+        }
+        if (file.size < 1) {
+          errors.push(`${file.name}: ${isArabic ? 'الملف فارغ' : 'File is empty'}`);
+          continue;
+        }
+        if (file.size > MAX_ATTACHMENT_BYTES) {
+          errors.push(t.fileTooLarge(file.name));
+          continue;
+        }
+
+        try {
+          const data = await readFileAsDataUrl(file);
+          await postDatabaseAction({
+            action: 'add_attachment',
+            record_index: recordIndex,
+            attachment: { name: file.name, type: file.type, size: file.size, data }
+          }, { applyState: true });
+          uploadedCount += 1;
+          remainingSlots -= 1;
+        } catch (error) {
+          errors.push(`${file.name}: ${error.message}`);
+        }
+      }
+
+      if (errors.length) {
+        const extra = errors.length > 1 ? ` (+${errors.length - 1})` : '';
+        setToast(`${errors[0]}${extra}`);
+      } else if (uploadedCount > 0) {
+        setToast(isArabic ? `تم إرفاق ${uploadedCount} ملف` : `${uploadedCount} file${uploadedCount === 1 ? '' : 's'} attached`);
+      }
+    } finally {
+      attachmentUploadInProgressRef.current = false;
+      setIsUploadingAttachments(false);
     }
   }
 
@@ -595,7 +804,7 @@ export default function QADashboard({ records }) {
   }
 
   async function removeAttachmentHandler(attachmentId) {
-    if (isSaving || isSavingRef.current) return;
+    if (isSaving || isSavingRef.current || attachmentUploadInProgressRef.current) return;
     try {
       await postDatabaseAction({ action: 'delete_attachment', attachment_id: attachmentId }, { applyState: true });
       setToast(isArabic ? 'تم حذف المرفق' : 'Attachment removed');
@@ -603,12 +812,29 @@ export default function QADashboard({ records }) {
   }
 
   async function downloadAttachment(attachmentId, filename) {
+    if (downloadingAttachmentId === attachmentId) return;
+    setDownloadingAttachmentId(attachmentId);
     try {
-      const res = await fetch(`/api/database?attachment_id=${attachmentId}`);
-      const payload = await res.json();
-      if (!payload?.data) throw new Error('Download failed');
-      const a = document.createElement('a'); a.href = payload.data; a.download = filename; a.click();
-    } catch (err) { setToast(isArabic ? 'فشل التنزيل' : 'Download failed'); }
+      const res = await fetch(`/api/database?attachment_id=${encodeURIComponent(attachmentId)}&download=1`, { cache: 'no-store' });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.error || 'Download failed');
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename || 'attachment';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      setToast(`${isArabic ? 'فشل التنزيل' : 'Download failed'}: ${err.message}`);
+    } finally {
+      setDownloadingAttachmentId(null);
+    }
   }
 
   const stats = useMemo(() => {
@@ -849,7 +1075,7 @@ export default function QADashboard({ records }) {
               <>
                 <div className="sep" />
                 <div className="row" style={{ marginBottom: 4 }}>
-                  <button className="btn ok" onClick={() => markValidated(selected)} disabled={isSaving}>
+                  <button className="btn ok" onClick={() => markValidated(selected)} disabled={isSaving || isUploadingAttachments}>
                     {isSaving ? t.saving : t.save}
                   </button>
                 </div>
@@ -875,10 +1101,18 @@ export default function QADashboard({ records }) {
                 ))}
                 <div className="sep" />
                 <div
-                  className={`attachmentsSection${dragOver ? ' dragOver' : ''}`}
-                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                  className={`attachmentsSection${dragOver && !isSaving && !isUploadingAttachments ? ' dragOver' : ''}`}
+                  aria-busy={isUploadingAttachments}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (!isSaving && !isUploadingAttachments) setDragOver(true);
+                  }}
                   onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false); }}
-                  onDrop={(e) => { e.preventDefault(); setDragOver(false); processFiles(Array.from(e.dataTransfer.files)); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOver(false);
+                    if (!isSaving && !isUploadingAttachments) void processFiles(Array.from(e.dataTransfer.files));
+                  }}
                 >
                   {(selectedRecord?.attachments?.length > 0) && (
                     <div className="attachmentsList">
@@ -886,32 +1120,69 @@ export default function QADashboard({ records }) {
                       {selectedRecord.attachments.map((a) => (
                         <div key={a.id} className="attachmentItem">
                           <span className="attachmentIcon">📄</span>
-                          <button className="attachmentName" onClick={() => downloadAttachment(a.id, a.name)}>{a.name}</button>
+                          <button
+                            className="attachmentName"
+                            type="button"
+                            onClick={() => downloadAttachment(a.id, a.name)}
+                            disabled={downloadingAttachmentId === a.id}
+                            title={`${t.downloadAttachment}: ${a.name}`}
+                          >
+                            {a.name}
+                          </button>
                           <span className="attachmentSize">{(a.size / 1024).toFixed(0)} KB</span>
-                          <button className="attachmentRemove" onClick={() => removeAttachmentHandler(a.id)} disabled={isSaving}>✕</button>
+                          <button
+                            className="attachmentDownload"
+                            type="button"
+                            onClick={() => downloadAttachment(a.id, a.name)}
+                            disabled={downloadingAttachmentId === a.id}
+                            aria-label={`${t.downloadAttachment}: ${a.name}`}
+                            title={`${t.downloadAttachment}: ${a.name}`}
+                          >
+                            {downloadingAttachmentId === a.id ? t.downloadingAttachment : `↓ ${t.downloadAttachment}`}
+                          </button>
+                          <button
+                            className="attachmentRemove"
+                            type="button"
+                            onClick={() => removeAttachmentHandler(a.id)}
+                            disabled={isSaving || isUploadingAttachments || downloadingAttachmentId === a.id}
+                            aria-label={isArabic ? `حذف ${a.name}` : `Remove ${a.name}`}
+                            title={isArabic ? 'حذف المرفق' : 'Remove attachment'}
+                          >
+                            ✕
+                          </button>
                         </div>
                       ))}
                     </div>
                   )}
-                  <label className="btn attachBtn">
-                    <span className="attachBtnLabel">{t.attachForms}</span>
+                  <label
+                    className={`btn attachBtn${isSaving || isUploadingAttachments ? ' disabled' : ''}`}
+                    aria-disabled={isSaving || isUploadingAttachments}
+                  >
+                    <span className="attachBtnLabel">{isUploadingAttachments ? t.uploadingAttachments : t.attachForms}</span>
                     <span className="attachBtnHint">{t.attachFormsHint}</span>
-                    <input type="file" hidden accept=".pdf,.doc,.docx" multiple onChange={handleAttachFiles} disabled={isSaving} />
+                    <input
+                      type="file"
+                      hidden
+                      accept=".pdf,.doc,.docx"
+                      multiple
+                      onChange={handleAttachFiles}
+                      disabled={isSaving || isUploadingAttachments}
+                    />
                   </label>
                 </div>
                 <div className="sep" />
                 <div className="row">
-                  <button className="btn ok" onClick={() => markValidated(selected)} disabled={isSaving}>
+                  <button className="btn ok" onClick={() => markValidated(selected)} disabled={isSaving || isUploadingAttachments}>
                     {isSaving ? t.saving : t.save}
                   </button>
                   {selectedEdited && !resetConfirm && (
-                    <button className="btn warn" onClick={() => setResetConfirm(true)} disabled={isSaving}>{t.resetRecordEdits}</button>
+                    <button className="btn warn" onClick={() => setResetConfirm(true)} disabled={isSaving || isUploadingAttachments}>{t.resetRecordEdits}</button>
                   )}
                   {selectedEdited && resetConfirm && (
                     <div className="row" style={{ alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: '#92400e' }}>{t.confirmResetMsg}</span>
-                      <button className="btn warn" style={{ padding: '6px 14px', minHeight: 36 }} onClick={() => { resetRecordEdits(selected); setResetConfirm(false); }} disabled={isSaving}>{t.confirmYes}</button>
-                      <button className="btn ghost" style={{ padding: '6px 14px', minHeight: 36 }} onClick={() => setResetConfirm(false)} disabled={isSaving}>{t.confirmNo}</button>
+                      <button className="btn warn" style={{ padding: '6px 14px', minHeight: 36 }} onClick={() => { resetRecordEdits(selected); setResetConfirm(false); }} disabled={isSaving || isUploadingAttachments}>{t.confirmYes}</button>
+                      <button className="btn ghost" style={{ padding: '6px 14px', minHeight: 36 }} onClick={() => setResetConfirm(false)} disabled={isSaving || isUploadingAttachments}>{t.confirmNo}</button>
                     </div>
                   )}
                 </div>
@@ -1036,16 +1307,20 @@ export default function QADashboard({ records }) {
               <button className="adminClose" onClick={() => setShowAdmin(false)}>✕</button>
             </div>
             <div className="adminBody">
-              <button className="btn ghost" style={{ width: '100%', color: '#151515', borderColor: '#d1d5db', fontWeight: 600 }} onClick={() => { exportCorrectedJSON(); setShowAdmin(false); }}>
-                {isArabic ? 'تصدير JSON المصحّح' : 'Export corrected JSON'}
+              <button className="btn ghost" style={{ width: '100%', color: '#151515', borderColor: '#d1d5db', fontWeight: 600 }} onClick={async () => { setShowAdmin(false); await exportCorrectedJSON(); }}>
+                {t.exportCorrectedJSON}
               </button>
               <button className="btn ghost" style={{ width: '100%', color: '#2563eb', borderColor: '#2563eb' }} onClick={async () => { setShowAdmin(false); await downloadAllAttachments(); }}>
                 {t.downloadAllAttachments}
               </button>
               <div className="sep" style={{ margin: '4px 0' }} />
-              <label className="btn ghost" style={{ width: '100%', color: '#7c3aed', borderColor: '#7c3aed', textAlign: 'center', cursor: 'pointer' }}>
+              <label
+                className={`btn ghost${isSaving || isUploadingAttachments ? ' disabled' : ''}`}
+                aria-disabled={isSaving || isUploadingAttachments}
+                style={{ width: '100%', color: '#7c3aed', borderColor: '#7c3aed', textAlign: 'center', cursor: isSaving || isUploadingAttachments ? 'not-allowed' : 'pointer' }}
+              >
                 {isArabic ? '📂 رفع ملف JSON' : '📂 Upload JSON File'}
-                <input type="file" hidden accept=".json" onChange={uploadJsonHandler} />
+                <input type="file" hidden accept=".json" onChange={uploadJsonHandler} disabled={isSaving || isUploadingAttachments} />
               </label>
               <div className="sep" style={{ margin: '4px 0' }} />
               <button className="btn ghost" style={{ width: '100%', color: '#ef4444', borderColor: '#ef4444' }} onClick={async () => {
