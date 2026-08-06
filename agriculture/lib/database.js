@@ -5,6 +5,18 @@ const EDITABLE_FIELDS = ['service_name', 'directorate', 'department', 'unit', 'r
 const REQUIRED_FIELDS = ['service_name', 'directorate', 'department', 'required_documents'];
 const SOURCE_FILE = 'agr_services.json';
 const MINISTRY_KEY = 'agriculture';
+const MAX_ATTACHMENTS_PER_SERVICE = 5;
+const MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024;
+const ATTACHMENT_MIME_BY_EXTENSION = {
+  '.pdf': 'application/pdf',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+};
+const ALLOWED_ATTACHMENT_MIME_TYPES = {
+  '.pdf': new Set(['', 'application/pdf', 'application/octet-stream']),
+  '.doc': new Set(['', 'application/msword', 'application/vnd.ms-word', 'application/doc', 'application/octet-stream', 'application/x-ole-storage']),
+  '.docx': new Set(['', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/zip', 'application/octet-stream'])
+};
 
 let sqlConnection;
 let initPromise;
@@ -30,6 +42,90 @@ function badRequest(message, details = {}) {
   error.statusCode = 400;
   Object.assign(error, details);
   return error;
+}
+
+function codePointSlice(value, maxLength) {
+  return Array.from(String(value || '')).slice(0, maxLength).join('');
+}
+
+function sanitizeAttachmentFilename(value) {
+  const cleaned = String(value || '')
+    .normalize('NFKC')
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .replace(/[\\/:*?"<>|]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/g, '');
+
+  const lastDot = cleaned.lastIndexOf('.');
+  if (lastDot <= 0 || lastDot === cleaned.length - 1) {
+    throw badRequest('Only PDF and Word files are allowed.');
+  }
+
+  const extensionText = cleaned.slice(lastDot);
+  const extension = extensionText.toLowerCase();
+  if (!Object.prototype.hasOwnProperty.call(ATTACHMENT_MIME_BY_EXTENSION, extension)) {
+    throw badRequest('Only PDF and Word files are allowed.');
+  }
+
+  let base = cleaned.slice(0, lastDot).trim().replace(/[. ]+$/g, '');
+  const maxBaseLength = Math.max(1, 200 - Array.from(extensionText).length);
+  base = codePointSlice(base, maxBaseLength).replace(/[. ]+$/g, '') || 'document';
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(base)) base = `_${base}`;
+
+  return {
+    name: `${base}${extensionText}`,
+    extension,
+    canonicalType: ATTACHMENT_MIME_BY_EXTENSION[extension]
+  };
+}
+
+function decodeAttachmentDataUrl(value) {
+  const data = String(value || '');
+  const commaIndex = data.indexOf(',');
+  if (commaIndex < 0) throw badRequest('Attachment data must be a base64 data URL.');
+
+  const header = data.slice(0, commaIndex);
+  const body = data.slice(commaIndex + 1).replace(/\s+/g, '');
+  const headerMatch = /^data:([^;,]*)(?:;[^;,=]+=[^;,]*)*;base64$/i.exec(header);
+  if (!headerMatch || !body || !/^[A-Za-z0-9+/]*={0,2}$/.test(body) || body.length % 4 !== 0) {
+    throw badRequest('Attachment data is not valid base64.');
+  }
+
+  const bytes = Buffer.from(body, 'base64');
+  const canonicalBase64 = bytes.toString('base64');
+  if (canonicalBase64.replace(/=+$/g, '') !== body.replace(/=+$/g, '')) {
+    throw badRequest('Attachment data is not valid base64.');
+  }
+
+  return { bytes, declaredType: String(headerMatch[1] || '').toLowerCase() };
+}
+
+function normalizeAttachment(attachment) {
+  const { name, extension, canonicalType } = sanitizeAttachmentFilename(attachment?.name);
+  const { bytes, declaredType } = decodeAttachmentDataUrl(attachment?.data);
+  const providedType = String(attachment?.type || '').split(';', 1)[0].trim().toLowerCase();
+  const allowedTypes = ALLOWED_ATTACHMENT_MIME_TYPES[extension];
+
+  if (!allowedTypes.has(declaredType) || !allowedTypes.has(providedType)) {
+    throw badRequest('The attachment file type does not match its filename.');
+  }
+  if (bytes.length < 1) throw badRequest('Attachment file is empty.');
+  if (bytes.length > MAX_ATTACHMENT_BYTES) {
+    throw badRequest(`Attachment exceeds the ${MAX_ATTACHMENT_BYTES / (1024 * 1024)}MB limit.`);
+  }
+
+  const providedSize = Number(attachment?.size);
+  if (Number.isFinite(providedSize) && providedSize > 0 && providedSize !== bytes.length) {
+    throw badRequest('Attachment size does not match the uploaded file.');
+  }
+
+  return {
+    name,
+    fileType: canonicalType,
+    sizeBytes: bytes.length,
+    data: `data:${canonicalType};base64,${bytes.toString('base64')}`
+  };
 }
 
 function normalizeEditableRecord(record) {
@@ -169,7 +265,10 @@ async function migrate(db) {
       created_at TEXT NOT NULL
     )
   `;
+  await db.unsafe(`ALTER TABLE service_attachments ADD COLUMN IF NOT EXISTS ministry TEXT NOT NULL DEFAULT ''`);
+  await db`UPDATE service_attachments sa SET ministry = s.ministry FROM services s WHERE sa.service_id = s.id AND sa.ministry = ''`;
   await db`CREATE INDEX IF NOT EXISTS idx_service_attachments_service_id ON service_attachments(service_id)`;
+  await db`CREATE INDEX IF NOT EXISTS idx_service_attachments_ministry_id ON service_attachments(ministry, id)`;
 }
 
 async function seed(db) {
@@ -605,21 +704,39 @@ export async function deleteService(recordIndex) {
 }
 
 export async function addAttachment(recordIndex, attachment) {
-  if (!Number.isInteger(recordIndex) || recordIndex < 0) throw new Error('record_index must be a zero-based integer.');
-  const name = String(attachment?.name || '').slice(0, 200);
-  const fileType = String(attachment?.type || '');
-  const sizeBytes = Number(attachment?.size || 0);
-  const data = String(attachment?.data || '');
-  if (!name || !data) throw new Error('Attachment name and data are required.');
+  if (!Number.isInteger(recordIndex) || recordIndex < 0) {
+    throw badRequest('record_index must be a zero-based integer.');
+  }
+  const normalizedAttachment = normalizeAttachment(attachment);
 
   await ensureDatabaseReady();
   const db = getSql();
   await db.begin(async (tx) => {
-    const service = await getServiceByIndex(tx, recordIndex);
-    const [{ count }] = await tx`SELECT COUNT(*) AS count FROM service_attachments WHERE service_id = ${service.id}`;
-    if (Number(count) >= 5) throw new Error('Maximum 5 attachments per service.');
-    await tx`INSERT INTO service_attachments (service_id, ministry, name, file_type, size_bytes, data, created_at) VALUES (${service.id}, ${MINISTRY_KEY}, ${name}, ${fileType}, ${sizeBytes}, ${data}, ${now()})`;
-    await insertAudit(tx, service.id, 'add_attachment', 'attachments', null, name);
+    const [service] = await tx`
+      SELECT * FROM services
+      WHERE ministry = ${MINISTRY_KEY} AND record_index = ${recordIndex}
+      FOR UPDATE
+    `;
+    if (!service) throw new Error(`Record ${recordIndex + 1} was not found.`);
+
+    const [{ count }] = await tx`
+      SELECT COUNT(*) AS count
+      FROM service_attachments
+      WHERE service_id = ${service.id}
+    `;
+    if (Number(count) >= MAX_ATTACHMENTS_PER_SERVICE) {
+      throw badRequest(`Maximum ${MAX_ATTACHMENTS_PER_SERVICE} attachments per service.`);
+    }
+
+    await tx`
+      INSERT INTO service_attachments (service_id, ministry, name, file_type, size_bytes, data, created_at)
+      VALUES (
+        ${service.id}, ${MINISTRY_KEY}, ${normalizedAttachment.name},
+        ${normalizedAttachment.fileType}, ${normalizedAttachment.sizeBytes},
+        ${normalizedAttachment.data}, ${now()}
+      )
+    `;
+    await insertAudit(tx, service.id, 'add_attachment', 'attachments', null, normalizedAttachment.name);
   });
   return getState();
 }
@@ -643,13 +760,13 @@ export async function getAttachmentData(attachmentId) {
   if (!Number.isInteger(id) || id < 1) throw new Error('attachment_id must be a positive integer.');
   await ensureDatabaseReady();
   const db = getSql();
-  const [att] = await db`SELECT data, name, file_type FROM service_attachments WHERE id = ${id} AND ministry = ${MINISTRY_KEY}`;
+  const [att] = await db`SELECT data, name, file_type, size_bytes FROM service_attachments WHERE id = ${id} AND ministry = ${MINISTRY_KEY}`;
   if (!att) throw new Error('Attachment not found.');
-  return { ok: true, data: att.data, name: att.name, type: att.file_type };
+  return { ok: true, data: att.data, name: att.name, type: att.file_type, size: Number(att.size_bytes || 0) };
 }
 
 
-export async function uploadSourceJson(records) {
+export async function uploadSourceJson(records, confirmDeleteAttachments = false, expectedAttachmentCount = null) {
   if (!Array.isArray(records)) throw new Error('records must be an array.');
   await ensureDatabaseReady();
   const db = getSql();
@@ -665,6 +782,26 @@ export async function uploadSourceJson(records) {
     notes: clean(r?.notes)
   }));
   await db.begin(async (tx) => {
+    await tx`LOCK TABLE services IN SHARE ROW EXCLUSIVE MODE`;
+    await tx`LOCK TABLE service_attachments IN SHARE ROW EXCLUSIVE MODE`;
+    const [{ count: attachmentCount }] = await tx`
+      SELECT COUNT(*) AS count
+      FROM service_attachments
+      WHERE ministry = ${MINISTRY_KEY}
+    `;
+    const actualAttachmentCount = Number(attachmentCount);
+    if (actualAttachmentCount > 0 && !confirmDeleteAttachments) {
+      throw badRequest(`Replacing the source JSON would delete ${actualAttachmentCount} attachments. Explicit confirmation is required.`);
+    }
+    if (actualAttachmentCount > 0) {
+      const expectedCount = Number(expectedAttachmentCount);
+      if (!Number.isInteger(expectedCount) || expectedCount < 0 || expectedCount !== actualAttachmentCount) {
+        throw badRequest(
+          `The attachment count changed before replacement (expected ${Number.isInteger(expectedCount) ? expectedCount : 'an explicit count'}, found ${actualAttachmentCount}). Reload and confirm again.`
+        );
+      }
+    }
+
     await tx`DELETE FROM services WHERE ministry = ${MINISTRY_KEY}`;
     for (const [index, record] of normalized.entries()) {
       await tx`
