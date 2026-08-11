@@ -76,11 +76,13 @@ const COPY = {
     noAttachments: 'لا توجد مرفقات في هذه الوزارة',
     preparingDownload: 'جارٍ تحضير الملفات…',
     downloadComplete: 'اكتمل التنزيل',
-    zipFilename: 'مرفقات_الزراعة.zip',
+    // Keep the actual downloaded filename ASCII-only. Some Windows versions
+    // reject ZIP files whose archive name or internal paths contain Arabic.
+    zipFilename: 'agriculture_attachments.zip',
     preparingExport: 'جارٍ تحضير JSON والمستندات…',
     exportComplete: 'تم تصدير JSON والمستندات',
     exportFailed: 'فشل تصدير JSON والمستندات',
-    exportPackageFilename: 'خدمات_الزراعة_مع_المستندات.zip',
+    exportPackageFilename: 'agriculture_services_with_documents.zip',
     status: { validated: 'محفوظ', no: 'لا', pending: 'قيد المراجعة', cancelled: 'ملغى' }
   },
   en: {
@@ -222,21 +224,44 @@ function safePathSegment(value, fallback = 'item', maxLength = 100) {
   return cleaned || fallback;
 }
 
-function uniqueAttachmentFilename(filename, usedNames) {
-  const originalName = String(filename || 'document');
-  const lastDot = originalName.lastIndexOf('.');
-  const hasExtension = lastDot > 0 && lastDot < originalName.length - 1;
-  const rawBase = hasExtension ? originalName.slice(0, lastDot) : originalName;
-  const rawExtension = hasExtension ? originalName.slice(lastDot + 1) : '';
-  const cleanExtension = safePathSegment(rawExtension, '', 10).replace(/\s+/g, '');
-  const extension = cleanExtension ? `.${cleanExtension}` : '';
-  const base = safePathSegment(rawBase, 'document', Math.max(40, 110 - extension.length));
-  const safeName = `${base}${extension}`;
+function safeAsciiArchiveToken(value, fallback = '', maxLength = 30) {
+  let cleaned = String(value || '')
+    .normalize('NFKD')
+    .replace(/[^\x00-\x7F]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, maxLength)
+    .replace(/-+$/g, '');
+  return cleaned || fallback;
+}
 
-  let candidate = safeName;
+function archiveServiceFolder(record, ordinal) {
+  const safeCode = safeAsciiArchiveToken(record?.service_code, '', 28);
+  return `service-${ordinal}${safeCode ? `-${safeCode}` : ''}`;
+}
+
+function archiveAttachmentExtension(filename, contentType = '') {
+  const originalName = String(filename || '');
+  const lastDot = originalName.lastIndexOf('.');
+  if (lastDot > 0 && lastDot < originalName.length - 1) {
+    const extension = originalName.slice(lastDot).toLowerCase();
+    if (ALLOWED_ATTACHMENT_EXTENSIONS.has(extension)) return extension;
+  }
+
+  const normalizedType = String(contentType || '').split(';', 1)[0].trim().toLowerCase();
+  if (normalizedType === 'application/pdf') return '.pdf';
+  if (normalizedType === 'application/msword') return '.doc';
+  if (normalizedType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return '.docx';
+  return '.bin';
+}
+
+function uniqueArchiveAttachmentFilename(attachment, position, usedNames, contentType = '') {
+  const extension = archiveAttachmentExtension(attachment?.name, contentType);
+  const base = `attachment-${String(position).padStart(2, '0')}`;
+  let candidate = `${base}${extension}`;
   let suffix = 2;
   while (usedNames.has(candidate.toLowerCase())) {
-    candidate = `${base} (${suffix})${extension}`;
+    candidate = `${base}-${suffix}${extension}`;
     suffix += 1;
   }
   usedNames.add(candidate.toLowerCase());
@@ -523,20 +548,25 @@ export default function QADashboard({ records }) {
 
         if (record.attachments?.length) {
           const ordinal = String(record.record_index + 1).padStart(4, '0');
-          const safeCode = safePathSegment(record.service_code, '', 25);
-          const codePart = safeCode ? ` - ${safeCode}` : '';
-          const servicePart = safePathSegment(record.service_name, 'service', 55);
-          const serviceFolder = `documents/${ordinal}${codePart} - ${servicePart}`;
+          const serviceFolder = `documents/${archiveServiceFolder(record, ordinal)}`;
           const usedNames = new Set();
 
-          for (const attachment of record.attachments) {
+          for (let attachmentIndex = 0; attachmentIndex < record.attachments.length; attachmentIndex += 1) {
+            const attachment = record.attachments[attachmentIndex];
             const { bytes, contentType } = await fetchAttachmentBinary(attachment);
-            const exportedFilename = uniqueAttachmentFilename(attachment.name, usedNames);
+            const exportedFilename = uniqueArchiveAttachmentFilename(
+              attachment,
+              attachmentIndex + 1,
+              usedNames,
+              contentType
+            );
             const relativePath = `${serviceFolder}/${exportedFilename}`;
             zip.file(relativePath, bytes);
+            const attachmentId = Number(attachment.id);
             result.attachments.push({
-              attachment_id: Number(attachment.id),
+              attachment_id: Number.isSafeInteger(attachmentId) ? attachmentId : null,
               name: attachment.name,
+              stored_name: exportedFilename,
               path: relativePath,
               file_type: contentType,
               size_bytes: bytes.byteLength
@@ -556,14 +586,17 @@ export default function QADashboard({ records }) {
           'agr_services_corrected.json contains the corrected, non-cancelled service records.',
           'Each service has an attachments array.',
           'For every attachment, path points to the matching file inside this ZIP package.',
+          'name preserves the original uploaded filename, including Arabic characters.',
+          'stored_name is the short ASCII filename used inside the ZIP.',
           'Paths use forward slashes and are relative to the ZIP root.',
           'attachment_id is the database attachment ID at the time of export.',
-          'Duplicate filenames are renamed inside the ZIP, and path always records the exported filename.'
+          'All ZIP filenames and folder names are ASCII-only and short for Windows compatibility.'
         ].join('\n')
       );
 
       const blob = await zip.generateAsync({
         type: 'blob',
+        platform: 'DOS',
         compression: 'DEFLATE',
         compressionOptions: { level: 6 }
       });
@@ -584,25 +617,51 @@ export default function QADashboard({ records }) {
     try {
       const { default: JSZip } = await import('jszip');
       const zip = new JSZip();
+      const manifest = [];
 
       for (const record of servicesWithAttachments) {
         const ordinal = String(record.record_index + 1).padStart(4, '0');
-        const folderName = `${ordinal} - ${safePathSegment(record.service_name, 'service', 70)}`;
-        const folder = zip.folder(folderName);
+        const serviceFolder = `documents/${archiveServiceFolder(record, ordinal)}`;
         const usedNames = new Set();
 
-        for (const attachment of record.attachments) {
-          const { bytes } = await fetchAttachmentBinary(attachment);
-          folder.file(uniqueAttachmentFilename(attachment.name, usedNames), bytes);
+        for (let attachmentIndex = 0; attachmentIndex < record.attachments.length; attachmentIndex += 1) {
+          const attachment = record.attachments[attachmentIndex];
+          const { bytes, contentType } = await fetchAttachmentBinary(attachment);
+          const storedName = uniqueArchiveAttachmentFilename(
+            attachment,
+            attachmentIndex + 1,
+            usedNames,
+            contentType
+          );
+          const relativePath = `${serviceFolder}/${storedName}`;
+          zip.file(relativePath, bytes);
+          const attachmentId = Number(attachment.id);
+          manifest.push({
+            service_code: record.service_code,
+            service_name: record.service_name,
+            attachment_id: Number.isSafeInteger(attachmentId) ? attachmentId : null,
+            name: attachment.name,
+            stored_name: storedName,
+            path: relativePath,
+            file_type: contentType,
+            size_bytes: bytes.byteLength
+          });
         }
       }
 
+      zip.file('attachment_manifest.json', JSON.stringify(manifest, null, 2));
       zip.file(
         'README.txt',
-        'Attachments are grouped by service. Duplicate filenames are renamed so no document is overwritten.\n'
+        [
+          'Agriculture attachments export',
+          '',
+          'Documents are grouped under short ASCII service folders for Windows compatibility.',
+          'attachment_manifest.json preserves every original filename and links it to the exact ZIP path.'
+        ].join('\n')
       );
       const blob = await zip.generateAsync({
         type: 'blob',
+        platform: 'DOS',
         compression: 'DEFLATE',
         compressionOptions: { level: 6 }
       });
