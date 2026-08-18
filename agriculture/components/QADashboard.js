@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
 const EDITABLE_FIELDS = ['service_name', 'directorate', 'department', 'unit', 'required_documents', 'fees', 'notes'];
+const EXPORT_MINISTRY = 'وزارة الزراعة';
 const MAX_ATTACHMENTS_PER_SERVICE = 5;
 const MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024;
 const MAX_ATTACHMENT_MB = MAX_ATTACHMENT_BYTES / (1024 * 1024);
@@ -11,13 +12,13 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set(['.pdf', '.doc', '.docx']);
 const OPTIONAL_FIELDS = new Set(['unit', 'fees', 'notes']);
 
 const FIELD_META = {
-  service_name:       { ar: { label: 'اسم الخدمة',          placeholder: 'أدخل اسم الخدمة…'          }, en: { label: 'Service Name',      placeholder: 'Enter service name…'      } },
-  directorate:        { ar: { label: 'المديرية',             placeholder: 'أدخل المديرية…'             }, en: { label: 'Directorate',        placeholder: 'Enter directorate…'        } },
-  department:         { ar: { label: 'المصلحة',             placeholder: 'أدخل المصلحة…'              }, en: { label: 'Department',         placeholder: 'Enter department…'         } },
-  unit:               { ar: { label: 'الدائرة',             placeholder: 'أدخل الدائرة…'              }, en: { label: 'Unit',               placeholder: 'Enter unit…'               } },
-  required_documents: { ar: { label: 'المستندات المطلوبة',   placeholder: 'أدخل المستندات المطلوبة…'   }, en: { label: 'Required Documents', placeholder: 'Enter required documents…' } },
-  fees:               { ar: { label: 'الرسوم',               placeholder: 'أدخل الرسوم…'               }, en: { label: 'Fees',               placeholder: 'Enter fees…'               } },
-  notes:              { ar: { label: 'ملاحظات',              placeholder: 'أدخل الملاحظات…'            }, en: { label: 'Notes',              placeholder: 'Enter notes…'              } },
+  service_name:       { ar: { label: 'اسم الخدمة (Title)',                  placeholder: 'أدخل اسم الخدمة…'          }, en: { label: 'Title',         placeholder: 'Enter title…'             } },
+  directorate:        { ar: { label: 'المديرية (Directorate)',             placeholder: 'أدخل المديرية…'             }, en: { label: 'Directorate',   placeholder: 'Enter directorate…'       } },
+  department:         { ar: { label: 'المصلحة (Department)',               placeholder: 'أدخل المصلحة…'              }, en: { label: 'Department',    placeholder: 'Enter department…'        } },
+  unit:               { ar: { label: 'الدائرة (Unit)',                     placeholder: 'أدخل الدائرة…'              }, en: { label: 'Unit',          placeholder: 'Enter unit…'              } },
+  required_documents: { ar: { label: 'المستندات المطلوبة (Required Docs)', placeholder: 'أدخل المستندات المطلوبة…'   }, en: { label: 'Required Docs', placeholder: 'Enter required documents…' } },
+  fees:               { ar: { label: 'الرسوم (Fees)',                      placeholder: 'أدخل الرسوم…'               }, en: { label: 'Fees',          placeholder: 'Enter fees…'              } },
+  notes:              { ar: { label: 'ملاحظات (Notes)',                    placeholder: 'أدخل الملاحظات…'            }, en: { label: 'Notes',         placeholder: 'Enter notes…'             } },
 };
 
 const COMPACT_FIELDS = new Set(['service_name', 'directorate', 'department', 'unit', 'fees']);
@@ -27,7 +28,10 @@ const COPY = {
     switchToArabic: 'AR',
     switchToEnglish: 'EN',
     title: 'لوحة تدقيق خدمات وزارة الزراعة',
-    exportCorrectedJSON: 'تصدير المحفوظ فقط مع المستندات',
+    ministryField: 'الوزارة (Ministry)',
+    codeField: 'الرمز (Code)',
+    unitExportHint: 'يبقى حقل Unit منفصلاً في لوحة التدقيق، ويُضاف كسطر ثانٍ داخل Department عند التصدير.',
+    exportCorrectedJSON: 'تصدير المحفوظ بالبنية الجديدة مع المستندات',
     pending: 'قيد المراجعة',
     searchPlaceholder: 'ابحث في الخدمات…',
     allRecords: 'كل الخدمات',
@@ -53,8 +57,8 @@ const COPY = {
     addService: '+ إضافة خدمة',
     removeService: 'إلغاء الخدمة',
     addServiceTitle: 'إضافة خدمة جديدة',
-    serviceNameLabel: 'اسم الخدمة',
-    serviceNamePlaceholder: 'أدخل اسم الخدمة…',
+    serviceNameLabel: 'اسم الخدمة (Title)',
+    serviceNamePlaceholder: 'أدخل عنوان الخدمة…',
     addBtn: 'إضافة',
     addingService: 'جارٍ الإضافة…',
     serviceNameRequired: 'اسم الخدمة مطلوب.',
@@ -65,7 +69,7 @@ const COPY = {
     cancelled: 'ملغى',
     attachForms: '📎 إرفاق المستندات',
     attachFormsHint: `انقر لاختيار ملف PDF أو Word (حتى ${MAX_ATTACHMENT_MB}MB)`,
-    attachedForms: 'النماذج المرفقة',
+    attachedForms: 'المستندات المرفقة (Doc)',
     uploadingAttachments: 'جارٍ رفع المستندات…',
     fileTooLarge: (name) => `${name} يتجاوز الحد الأقصى (${MAX_ATTACHMENT_MB}MB)`,
     maxAttachments: `الحد الأقصى ${MAX_ATTACHMENTS_PER_SERVICE} مرفقات لكل خدمة`,
@@ -90,7 +94,10 @@ const COPY = {
     switchToArabic: 'AR',
     switchToEnglish: 'EN',
     title: 'Agriculture Services QA Dashboard',
-    exportCorrectedJSON: 'Export saved only + documents',
+    ministryField: 'Ministry',
+    codeField: 'Code',
+    unitExportHint: 'Unit remains separate in the dashboard and is appended as the second line of Department on export.',
+    exportCorrectedJSON: 'Export saved + documents (updated schema)',
     pending: 'Pending',
     searchPlaceholder: 'Search services…',
     allRecords: 'All records',
@@ -116,11 +123,11 @@ const COPY = {
     addService: '+ Add Service',
     removeService: 'Cancel Service',
     addServiceTitle: 'Add New Service',
-    serviceNameLabel: 'Service Name',
-    serviceNamePlaceholder: 'Enter service name…',
+    serviceNameLabel: 'Title',
+    serviceNamePlaceholder: 'Enter title…',
     addBtn: 'Add',
     addingService: 'Adding…',
-    serviceNameRequired: 'Service name is required.',
+    serviceNameRequired: 'Title is required.',
     addServiceFailed: 'Unable to add the service. Please try again.',
     addServiceNetworkError: 'Could not reach the server. Check your connection and try again.',
     cancelService: 'Cancel Service',
@@ -128,7 +135,7 @@ const COPY = {
     cancelled: 'Cancelled',
     attachForms: '📎 Attach Documents',
     attachFormsHint: `Click to select or drag & drop a PDF / Word file (max ${MAX_ATTACHMENT_MB}MB)`,
-    attachedForms: 'Attached Forms',
+    attachedForms: 'Doc / Attached Documents',
     uploadingAttachments: 'Uploading documents…',
     fileTooLarge: (name) => `${name} exceeds the ${MAX_ATTACHMENT_MB}MB limit`,
     maxAttachments: `Maximum ${MAX_ATTACHMENTS_PER_SERVICE} attachments per service`,
@@ -268,6 +275,37 @@ function uniqueArchiveAttachmentFilename(attachment, position, usedNames, conten
   }
   usedNames.add(candidate.toLowerCase());
   return candidate;
+}
+
+function exportText(value) {
+  return String(value ?? '').replace(/\r\n?/g, '\n');
+}
+
+function mergeDepartmentAndUnit(department, unit) {
+  return [department, unit]
+    .map((value) => exportText(value).trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
+function originalAttachmentNames(attachments) {
+  return (Array.isArray(attachments) ? attachments : [])
+    .map((attachment) => exportText(attachment?.name).trim())
+    .filter(Boolean);
+}
+
+function buildUpdatedSchemaRecord(record, attachmentNames = originalAttachmentNames(record?.attachments)) {
+  return {
+    Ministry: EXPORT_MINISTRY,
+    Code: exportText(record?.service_code),
+    Title: exportText(record?.service_name),
+    Directorate: exportText(record?.directorate),
+    Department: mergeDepartmentAndUnit(record?.department, record?.unit),
+    'Required Docs': exportText(record?.required_documents),
+    Fees: exportText(record?.fees),
+    Notes: exportText(record?.notes),
+    Doc: attachmentNames.join('\n')
+  };
 }
 
 async function fetchAttachmentBinary(attachment) {
@@ -540,14 +578,15 @@ export default function QADashboard({ records }) {
       const { default: JSZip } = await import('jszip');
       const zip = new JSZip();
       const exportRecords = [];
+      const documentLinks = [];
       const includedRecords = currentRecords
         .filter((record) => (getQA(record.record_index).status || 'pending') === 'validated');
       if (!includedRecords.length) { setToast(t.noSavedRecords); return; }
 
-      for (const record of includedRecords) {
-        const result = { service_code: record.service_code };
-        EDITABLE_FIELDS.forEach((field) => { result[field] = record[field]; });
-        result.attachments = [];
+      for (let exportRecordIndex = 0; exportRecordIndex < includedRecords.length; exportRecordIndex += 1) {
+        const record = includedRecords[exportRecordIndex];
+        const attachmentNames = originalAttachmentNames(record.attachments);
+        const result = buildUpdatedSchemaRecord(record, attachmentNames);
 
         if (record.attachments?.length) {
           const ordinal = String(record.record_index + 1).padStart(4, '0');
@@ -566,9 +605,15 @@ export default function QADashboard({ records }) {
             const relativePath = `${serviceFolder}/${exportedFilename}`;
             zip.file(relativePath, bytes);
             const attachmentId = Number(attachment.id);
-            result.attachments.push({
+            documentLinks.push({
+              Ministry: EXPORT_MINISTRY,
+              Code: result.Code,
+              Title: result.Title,
+              export_record_number: exportRecordIndex + 1,
+              service_record_index: record.record_index,
+              document_number: attachmentIndex + 1,
+              Doc: exportText(attachment.name).trim(),
               attachment_id: Number.isSafeInteger(attachmentId) ? attachmentId : null,
-              name: attachment.name,
               stored_name: exportedFilename,
               path: relativePath,
               file_type: contentType,
@@ -581,21 +626,29 @@ export default function QADashboard({ records }) {
       }
 
       zip.file('agr_services_corrected.json', JSON.stringify(exportRecords, null, 2));
+      zip.file('document_links.json', JSON.stringify(documentLinks, null, 2));
       zip.file(
         'README.txt',
         [
-          'Agriculture saved-services export',
+          'Agriculture saved-services export — updated JSON scheme',
           '',
           'agr_services_corrected.json contains only services marked Saved (validated) at export time.',
           'Pending, No, and Cancelled services are excluded.',
           'Only documents attached to exported Saved services are included.',
-          'Each exported service has an attachments array.',
-          'For every attachment, path points to the matching file inside this ZIP package.',
-          'name preserves the original uploaded filename, including Arabic characters.',
-          'stored_name is the short ASCII filename used inside the ZIP.',
-          'Paths use forward slashes and are relative to the ZIP root.',
-          'attachment_id is the database attachment ID at the time of export.',
-          'All ZIP filenames and folder names are ASCII-only and short for Windows compatibility.'
+          '',
+          'The service JSON uses exactly these fields, in this order:',
+          'Ministry, Code, Title, Directorate, Department, Required Docs, Fees, Notes, Doc.',
+          '',
+          'Ministry is always وزارة الزراعة.',
+          'Department combines the dashboard Department value and the separate Unit value with exactly one line break between them.',
+          'Doc contains the original uploaded document filename(s), in source order, separated by line breaks.',
+          'Doc is blank when a service has no attached documents.',
+          '',
+          'For Windows compatibility, physical documents use short ASCII names inside documents/.',
+          'document_links.json maps every original Doc filename to its exact stored_name and path inside this ZIP.',
+          'The exact machine link is export_record_number + document_number; export_record_number is the 1-based position in agr_services_corrected.json.',
+          'Code + Title + Doc are also repeated in document_links.json as human-readable identifiers.',
+          'Paths use forward slashes and are relative to the ZIP root.'
         ].join('\n')
       );
 
@@ -962,7 +1015,7 @@ export default function QADashboard({ records }) {
     const indices = currentRecords.map((r) => r.record_index).filter((index) => {
       const record = getRecord(index);
       const status = getQA(index).status || 'pending';
-      const haystack = EDITABLE_FIELDS.map((f) => record[f] || '').join('\n');
+      const haystack = [record.service_code, ...EDITABLE_FIELDS.map((f) => record[f] || '')].join('\n');
       const matchesSearch = !query || normalize(haystack).toLowerCase().includes(query);
       const matchesFilter = (filter === 'all' && status !== 'cancelled') || status === filter;
       const matchesDepartment = departmentFilter === 'all' || departmentKey(record.department) === departmentFilter;
@@ -1144,6 +1197,10 @@ export default function QADashboard({ records }) {
                   </button>
                 </div>
                 <div className="sep" />
+                <div className="row" style={{ alignItems: 'stretch', marginBottom: 12 }}>
+                  <ReadOnlySchemaField title={t.ministryField} value={EXPORT_MINISTRY} rtl />
+                  <ReadOnlySchemaField title={t.codeField} value={selectedRecord.service_code} />
+                </div>
                 {EDITABLE_FIELDS.map((field) => (
                   <EditableTextArea
                     key={field}
@@ -1159,13 +1216,14 @@ export default function QADashboard({ records }) {
                     compact={COMPACT_FIELDS.has(field)}
                     rtl={isArabic}
                     placeholder={FIELD_META[field]?.[uiLanguage]?.placeholder || ''}
+                    hint={field === 'unit' ? t.unitExportHint : ''}
                     hasError={saveErrors.has(field)}
                     disabled={isSaving}
                   />
                 ))}
                 <div className="sep" />
                 <div
-                  className={`attachmentsSection${dragOver && !isSaving && !isUploadingAttachments ? ' dragOver' : ''}`}
+                  className={`attachmentsSection box editableBox field-doc${dragOver && !isSaving && !isUploadingAttachments ? ' dragOver' : ''}`}
                   aria-busy={isUploadingAttachments}
                   onDragOver={(e) => {
                     e.preventDefault();
@@ -1178,9 +1236,9 @@ export default function QADashboard({ records }) {
                     if (!isSaving && !isUploadingAttachments) void processFiles(Array.from(e.dataTransfer.files));
                   }}
                 >
+                  <div className="labelRow"><h3>{t.attachedForms}</h3></div>
                   {(selectedRecord?.attachments?.length > 0) && (
                     <div className="attachmentsList">
-                      <h3 style={{ marginBottom: 8 }}>{t.attachedForms}</h3>
                       {selectedRecord.attachments.map((a) => (
                         <div key={a.id} className="attachmentItem">
                           <span className="attachmentIcon">📄</span>
@@ -1430,7 +1488,22 @@ function CustomSelect({ value, onChange, options, rtl = false }) {
   );
 }
 
-function EditableTextArea({ title, field, selected, selectedRecord, selectedSourceRecord, fieldHasDataEdit, updateDataCell, compact = false, rtl = false, placeholder = '', labels, hasError = false, optional = false, disabled = false }) {
+function ReadOnlySchemaField({ title, value, rtl = false }) {
+  return (
+    <div className="box editableBox" style={{ flex: '1 1 240px' }}>
+      <div className="labelRow"><h3>{title}</h3></div>
+      <div
+        className={rtl ? 'source ar' : 'source autoText'}
+        dir={rtl ? 'rtl' : 'auto'}
+        style={{ marginTop: 0, minHeight: 50, display: 'flex', alignItems: 'center', fontWeight: 600 }}
+      >
+        {String(value || '').trim() || '—'}
+      </div>
+    </div>
+  );
+}
+
+function EditableTextArea({ title, field, selected, selectedRecord, selectedSourceRecord, fieldHasDataEdit, updateDataCell, compact = false, rtl = false, placeholder = '', hint = '', labels, hasError = false, optional = false, disabled = false }) {
   const edited = fieldHasDataEdit(selected, field);
   return (
     <>
@@ -1438,6 +1511,7 @@ function EditableTextArea({ title, field, selected, selectedRecord, selectedSour
         <div className="labelRow">
           <h3>{title}{optional && <em style={{ fontSize: 12, fontWeight: 400, color: 'var(--muted)', marginInlineStart: 6 }}>(اختياري)</em>}</h3>
         </div>
+        {hint && <p style={{ margin: '-4px 0 2px', color: 'var(--muted)', fontSize: 12, lineHeight: 1.6 }} dir={rtl ? 'rtl' : 'ltr'}>{hint}</p>}
         <textarea
           className={`cellInput ${compact ? 'compact' : ''} ${rtl ? 'ar' : 'autoText'}`}
           dir={rtl ? 'rtl' : 'auto'}
