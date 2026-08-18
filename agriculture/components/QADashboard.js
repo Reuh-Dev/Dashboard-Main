@@ -27,7 +27,7 @@ const COPY = {
     switchToArabic: 'AR',
     switchToEnglish: 'EN',
     title: 'لوحة تدقيق خدمات وزارة الزراعة',
-    exportCorrectedJSON: 'تصدير JSON مع المستندات',
+    exportCorrectedJSON: 'تصدير المحفوظ فقط مع المستندات',
     pending: 'قيد المراجعة',
     searchPlaceholder: 'ابحث في الخدمات…',
     allRecords: 'كل الخدمات',
@@ -79,17 +79,18 @@ const COPY = {
     // Keep the actual downloaded filename ASCII-only. Some Windows versions
     // reject ZIP files whose archive name or internal paths contain Arabic.
     zipFilename: 'agriculture_attachments.zip',
-    preparingExport: 'جارٍ تحضير JSON والمستندات…',
-    exportComplete: 'تم تصدير JSON والمستندات',
-    exportFailed: 'فشل تصدير JSON والمستندات',
-    exportPackageFilename: 'agriculture_services_with_documents.zip',
+    preparingExport: 'جارٍ تحضير الخدمات المحفوظة والمستندات…',
+    exportComplete: 'تم تصدير الخدمات المحفوظة والمستندات',
+    exportFailed: 'فشل تصدير الخدمات المحفوظة والمستندات',
+    noSavedRecords: 'لا توجد خدمات محفوظة للتصدير',
+    exportPackageFilename: 'agriculture_saved_services_with_documents.zip',
     status: { validated: 'محفوظ', no: 'لا', pending: 'قيد المراجعة', cancelled: 'ملغى' }
   },
   en: {
     switchToArabic: 'AR',
     switchToEnglish: 'EN',
     title: 'Agriculture Services QA Dashboard',
-    exportCorrectedJSON: 'Export JSON + documents',
+    exportCorrectedJSON: 'Export saved only + documents',
     pending: 'Pending',
     searchPlaceholder: 'Search services…',
     allRecords: 'All records',
@@ -139,10 +140,11 @@ const COPY = {
     preparingDownload: 'Preparing download…',
     downloadComplete: 'Download complete',
     zipFilename: 'agriculture_attachments.zip',
-    preparingExport: 'Preparing JSON and documents…',
-    exportComplete: 'JSON and documents exported',
-    exportFailed: 'JSON and document export failed',
-    exportPackageFilename: 'agriculture_services_with_documents.zip',
+    preparingExport: 'Preparing saved services and documents…',
+    exportComplete: 'Saved services and documents exported',
+    exportFailed: 'Saved-service export failed',
+    noSavedRecords: 'No saved services to export',
+    exportPackageFilename: 'agriculture_saved_services_with_documents.zip',
     status: { validated: 'Saved', no: 'No', pending: 'Pending', cancelled: 'Cancelled' }
   }
 };
@@ -539,7 +541,8 @@ export default function QADashboard({ records }) {
       const zip = new JSZip();
       const exportRecords = [];
       const includedRecords = currentRecords
-        .filter((record) => (getQA(record.record_index).status || 'pending') !== 'cancelled');
+        .filter((record) => (getQA(record.record_index).status || 'pending') === 'validated');
+      if (!includedRecords.length) { setToast(t.noSavedRecords); return; }
 
       for (const record of includedRecords) {
         const result = { service_code: record.service_code };
@@ -581,10 +584,12 @@ export default function QADashboard({ records }) {
       zip.file(
         'README.txt',
         [
-          'Agriculture services export',
+          'Agriculture saved-services export',
           '',
-          'agr_services_corrected.json contains the corrected, non-cancelled service records.',
-          'Each service has an attachments array.',
+          'agr_services_corrected.json contains only services marked Saved (validated) at export time.',
+          'Pending, No, and Cancelled services are excluded.',
+          'Only documents attached to exported Saved services are included.',
+          'Each exported service has an attachments array.',
           'For every attachment, path points to the matching file inside this ZIP package.',
           'name preserves the original uploaded filename, including Arabic characters.',
           'stored_name is the short ASCII filename used inside the ZIP.',
